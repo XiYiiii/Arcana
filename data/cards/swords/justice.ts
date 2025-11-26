@@ -32,8 +32,7 @@ export const SWORDS_JUSTICE: CardDefinition = {
             const hangedMan = p.deck[hangedManIdx];
             const newDeck = [...p.deck];
             newDeck.splice(hangedManIdx, 1);
-            // Randomly pick? The prompt says "Randomly get a Hanged Man".
-            // Since decks are shuffled, picking the first one found is effectively random among copies.
+            
             ctx.log(`【正义】召唤了 [${hangedMan.name}]！`);
             return {
                 ...p,

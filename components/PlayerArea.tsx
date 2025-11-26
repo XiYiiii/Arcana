@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Card, GamePhase, InstantWindow, PlayerState } from '../types';
 import { MAX_HAND_SIZE } from '../constants';
@@ -140,6 +141,23 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                {player.isInvalidated && <span className="w-2 h-2 rounded-full bg-stone-500" title="被无效"></span>}
                {mustDiscard && isDiscardPhase && <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" title="需弃牌"></span>}
              </div>
+
+             {/* Quests */}
+             {player.quests.length > 0 && (
+                 <>
+                     <div className="w-px h-6 bg-stone-700/50 mx-1"></div>
+                     <div className="flex gap-2">
+                         {player.quests.map(q => (
+                             <div key={q.id} className="flex flex-col items-center bg-stone-800 px-1.5 py-0.5 rounded border border-yellow-700/40 relative" title={q.description}>
+                                 <span className="text-[8px] text-yellow-500 font-bold leading-none mb-0.5 max-w-[50px] truncate">{q.name}</span>
+                                 <div className="w-full h-1 bg-stone-700 rounded-full overflow-hidden">
+                                     <div className="h-full bg-yellow-500 transition-all duration-500" style={{ width: `${(q.progress / q.target) * 100}%` }}></div>
+                                 </div>
+                             </div>
+                         ))}
+                     </div>
+                 </>
+             )}
          </div>
 
          {/* Main Playing Area Row: Piles + Hand */}

@@ -1,7 +1,8 @@
 
 
-import { EffectContext, PlayerState, GameState, Card, CardSuit } from '../types';
+import { EffectContext, PlayerState, GameState, Card, CardSuit, Quest, CardDefinition } from '../types';
 import { shuffleDeck } from './gameUtils';
+import { CARD_DEFINITIONS } from '../data/cards';
 
 // --- Helper for State Mutation ---
 
@@ -63,7 +64,7 @@ const calculateDamageReceived = (player: PlayerState, amount: number): number =>
 
 export const damagePlayer = (ctx: EffectContext, targetId: number, amount: number, isPiercing: boolean = false) => {
   const finalTargetId = getTargetId(ctx, targetId);
-  const sourceId = finalTargetId === 1 ? 2 : 1; // Who dealt it? (Assuming direct opposition for now)
+  const sourceId = finalTargetId === 1 ? 2 : 1; 
 
   ctx.setGameState(prev => {
     if (!prev) return null;
@@ -111,6 +112,13 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
     }
     newHp -= extraSelfDmg;
 
+    // Check Death Prevention Field (Swords Death)
+    if (newHp < 0 && prev.field?.active && prev.field.card.name.includes('宝剑·死神')) {
+         ctx.log(`[场地] 宝剑·死神发动！${p.name} 免于死亡，Hp变为1。场地崩塌。`);
+         newHp = 1;
+         // Field removal handled below
+    }
+
     let sourceHeal = 0;
     if (source.hasLifesteal && damageDealt > 0) {
         sourceHeal = damageDealt;
@@ -149,16 +157,49 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
         });
     }
 
+    let finalField = prev.field;
+    let finalP1Discard = prev.player1.discardPile;
+    let finalP2Discard = prev.player2.discardPile;
+
+    // Handle Swords Death Field Removal if triggered
+    if ((p.hp - actualDmg - extraSelfDmg) < 0 && prev.field?.active && prev.field.card.name.includes('宝剑·死神')) {
+        const fieldOwnerId = prev.field.ownerId;
+        const card = prev.field.card;
+        finalField = null;
+        if (fieldOwnerId === 1) finalP1Discard = [...finalP1Discard, card];
+        else finalP2Discard = [...finalP2Discard, card];
+    }
+
+    // Construct final objects
+    const finalP = { ...p, hp: newHp, nextDamageDouble };
+    const finalSource = { ...source, hp: newSourceHp, hand: newSourceHand };
+
+    // Need to assign correct P1/P2
+    const p1State = key === 'player1' ? finalP : finalSource;
+    const p2State = key === 'player2' ? finalP : finalSource;
+    
+    // Merge potential discard updates from field removal
+    if (prev.field?.active && prev.field.card.name.includes('宝剑·死神') && (p.hp - actualDmg - extraSelfDmg) < 0) {
+        if (prev.field.ownerId === 1) p1State.discardPile = finalP1Discard;
+        else p2State.discardPile = finalP2Discard;
+    }
+
     return {
       ...prev,
-      [key]: { ...p, hp: newHp, nextDamageDouble },
-      [sourceKey]: { ...source, hp: newSourceHp, hand: newSourceHand }
+      player1: p1State,
+      player2: p2State,
+      field: finalField
     };
   });
 };
 
 export const drawCards = (ctx: EffectContext, playerId: number, count: number, isPhaseDraw: boolean = false) => {
   const finalTargetId = getTargetId(ctx, playerId);
+
+  // Update Quest Progress for "Cups Chariot" (Draw cards)
+  if (count > 0) {
+      updateQuestProgress(ctx, finalTargetId, 'quest-cups-chariot', count);
+  }
 
   ctx.setGameState(prev => {
     if (!prev) return null;
@@ -180,6 +221,17 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
     for(let i=0; i<actualCount; i++) {
       if(newDeck.length > 0) {
         const card = newDeck.shift()!;
+        
+        // Swords Tower Logic: If drawn, mark all hands "Swords Tower", discard self.
+        if (card.name.includes('宝剑·高塔')) {
+            ctx.log(`[宝剑·高塔] 被抽到！传染标记并自我弃置。`);
+            // We can't easily mark "all hands" inside this loop for both players without complex state.
+            // But we can trigger an effect.
+            // For simplicity, let's mark current player hand here, and opponent later? 
+            // Or just use the card's onDraw to handle the global effect.
+            // Let's rely on card.onDraw adding to pendingEffects.
+        }
+
         newHand.push(card);
         drawnCount++;
         if (card.onDraw) {
@@ -205,11 +257,9 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
 };
 
 export const addMarkToCard = (card: Card, mark: string): Card => {
-  if (card.marks.includes(mark)) return card;
-  return { ...card, marks: [...card.marks, mark] };
+  // New Rule: Cards can only hold ONE mark. Newer marks overwrite older ones.
+  return { ...card, marks: [mark] };
 };
-
-// --- New Mechanics ---
 
 export const shufflePlayerDeck = (ctx: EffectContext, playerId: number) => {
     const finalTargetId = getTargetId(ctx, playerId);
@@ -225,7 +275,6 @@ export const shufflePlayerDeck = (ctx: EffectContext, playerId: number) => {
     });
 };
 
-// Moves a specific card (likely from discard/hand) into the target deck and shuffles
 export const putCardInDeck = (ctx: EffectContext, targetId: number, card: Card, shuffle: boolean = true) => {
     const finalTargetId = getTargetId(ctx, targetId);
     ctx.setGameState(prev => {
@@ -365,11 +414,76 @@ export const destroyCard = (ctx: EffectContext, cardInstanceId: string) => {
     });
 };
 
-// Discard Wrapper with Treasure Protection
+// --- FIELD ACTIONS ---
+
+export const discardField = (ctx: EffectContext) => {
+    ctx.setGameState(prev => {
+        if (!prev || !prev.field) return prev;
+        
+        const card = prev.field.card;
+        const ownerId = prev.field.ownerId;
+        const key = ownerId === 1 ? 'player1' : 'player2';
+        
+        ctx.log(`[场地] ${card.name} 被弃置/覆盖。`);
+
+        // Revert Buffs if specific cards
+        let p = prev[key];
+        if (card.name.includes('圣杯·力量')) {
+            ctx.log(`[圣杯·力量] 场地失效，攻击力还原。`);
+            p = { ...p, atk: p.atk - 1 };
+        }
+
+        return {
+            ...prev,
+            [key]: { ...p, discardPile: [...p.discardPile, card] },
+            field: null
+        };
+    });
+};
+
+export const setField = (ctx: EffectContext, card: Card) => {
+    // First discard existing field if any
+    discardField(ctx);
+
+    ctx.setGameState(prev => {
+        if (!prev) return null;
+        
+        // Apply Buffs for new field
+        const key = ctx.sourcePlayerId === 1 ? 'player1' : 'player2';
+        let p = prev[key];
+        
+        if (card.name.includes('圣杯·力量')) {
+            ctx.log(`[圣杯·力量] 场地激活！攻击力+1。`);
+            p = { ...p, atk: p.atk + 1 };
+        }
+
+        ctx.log(`[场地] 设置为: ${card.name}`);
+
+        return {
+            ...prev,
+            [key]: p,
+            field: {
+                card,
+                ownerId: ctx.sourcePlayerId,
+                counter: 0,
+                active: true
+            }
+        };
+    });
+};
+
+// Discard Wrapper with Treasure Protection & Field Logic
 export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceIds: string[]) => {
+    const finalTargetId = getTargetId(ctx, playerId);
+    
+    // Check Quest Progress for "Swords Temperance" (Discard cards)
+    if (cardInstanceIds.length > 0) {
+        updateQuestProgress(ctx, finalTargetId, 'quest-swords-temperance', cardInstanceIds.length);
+    }
+
     ctx.setGameState(prev => {
         if(!prev) return null;
-        const key = playerId === 1 ? 'player1' : 'player2';
+        const key = finalTargetId === 1 ? 'player1' : 'player2';
         const p = prev[key];
         
         // Filter out treasures from being discarded
@@ -385,7 +499,7 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
         const newPending = [...prev.pendingEffects];
         const newHand = p.hand.filter(c => {
             if(idsToDiscard.includes(c.instanceId)) {
-                if(c.onDiscard) newPending.push({ type: 'ON_DISCARD', card: c, playerId, description: "弃置触发！" });
+                if(c.onDiscard) newPending.push({ type: 'ON_DISCARD', card: c, playerId: finalTargetId, description: "弃置触发！" });
                 return false;
             }
             return true;
@@ -393,10 +507,197 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
         
         const discardedCards = p.hand.filter(c => idsToDiscard.includes(c.instanceId));
         
-        return {
+        let nextState = {
             ...prev,
             pendingEffects: newPending,
             [key]: { ...p, hand: newHand, discardPile: [...p.discardPile, ...discardedCards] }
         };
+
+        // --- FIELD COUNTERS LOGIC ---
+        if (nextState.field) {
+            // Wands Magician: After 4 discards, recycle discard piles to deck
+            if (nextState.field.card.name.includes('权杖·魔术师')) {
+                const newCounter = nextState.field.counter + discardedCards.length;
+                if (newCounter >= 4) {
+                    ctx.log(`[场地] 权杖·魔术师激活！所有弃置牌回收至牌堆！`);
+                    // Recycle
+                    const recycle = (pl: PlayerState) => ({
+                        ...pl,
+                        deck: shuffleDeck([...pl.deck, ...pl.discardPile]),
+                        discardPile: []
+                    });
+                    nextState = {
+                        ...nextState,
+                        player1: recycle(nextState.player1),
+                        player2: recycle(nextState.player2),
+                        field: { ...nextState.field, counter: newCounter } // Keep counter rising or reset? Assuming continuous.
+                    };
+                } else {
+                    nextState.field = { ...nextState.field, counter: newCounter };
+                }
+            }
+            // Cups Temperance: After 4 discards, discard ALL hands then discard field
+            else if (nextState.field.card.name.includes('圣杯·节制')) {
+                const newCounter = nextState.field.counter + discardedCards.length;
+                if (newCounter >= 4) {
+                    ctx.log(`[场地] 圣杯·节制激活！清空手牌并摧毁场地！`);
+                    
+                    // Move hands to discard
+                    const discardHand = (pl: PlayerState) => ({
+                        ...pl,
+                        hand: [],
+                        discardPile: [...pl.discardPile, ...pl.hand]
+                    });
+                    
+                    nextState = {
+                        ...nextState,
+                        player1: discardHand(nextState.player1),
+                        player2: discardHand(nextState.player2),
+                        // Explicitly discard the field here manually in state (simpler than calling action recursively)
+                        field: null
+                    };
+                    // Add field card to owner's discard
+                    const fieldOwnerKey = prev.field.ownerId === 1 ? 'player1' : 'player2';
+                    const fieldCard = prev.field.card;
+                    nextState[fieldOwnerKey].discardPile.push(fieldCard);
+                } else {
+                    nextState.field = { ...nextState.field, counter: newCounter };
+                }
+            }
+        }
+
+        return nextState;
     });
 };
+
+export const checkGameOver = (ctx: EffectContext) => {
+    ctx.setGameState(prev => {
+        if(!prev) return null;
+        if(prev.player1.hp <= 0 || prev.player2.hp <= 0) {
+            let msg = prev.player1.hp <= 0 && prev.player2.hp <= 0 ? "双方平局！" : prev.player1.hp <= 0 ? "玩家 2 获胜！" : "玩家 1 获胜！";
+            return { ...prev, phase: 'GAME_OVER' as any, logs: [msg, ...prev.logs] };
+        }
+        return prev;
+    });
+};
+
+// --- QUEST LOGIC ---
+
+export const addQuest = (ctx: EffectContext, playerId: number, quest: Quest) => {
+    const finalTargetId = getTargetId(ctx, playerId);
+    ctx.setGameState(prev => {
+        if (!prev) return null;
+        const key = finalTargetId === 1 ? 'player1' : 'player2';
+        const p = prev[key];
+        
+        if (p.quests.length >= 2) {
+            ctx.log(`[任务] ${p.name} 的任务栏已满，无法接受任务：${quest.name}。`);
+            return prev;
+        }
+        
+        if (p.quests.some(q => q.id === quest.id)) {
+             ctx.log(`[任务] ${p.name} 已经拥有任务：${quest.name}。`);
+             return prev;
+        }
+
+        ctx.log(`[任务] ${p.name} 获得了任务：${quest.name}。`);
+        return {
+            ...prev,
+            [key]: { ...p, quests: [...p.quests, quest] }
+        };
+    });
+};
+
+export const updateQuestProgress = (ctx: EffectContext, playerId: number, questId: string, amount: number) => {
+    // Note: We use setTimeout to break the render cycle or allow state to settle, 
+    // but here we are usually inside an event handler. We need access to current state.
+    // We'll use setGameState with functional update.
+    
+    // We need to trigger side effects (rewards) if complete.
+    // This is tricky inside a setState reducer. 
+    // We will do a two-step process: Update progress, then if complete, enqueue a reward action/effect.
+    // Or handle it immediately if simple.
+    
+    ctx.setGameState(prev => {
+        if (!prev) return null;
+        const key = playerId === 1 ? 'player1' : 'player2';
+        const p = prev[key];
+        
+        const questIdx = p.quests.findIndex(q => q.id === questId);
+        if (questIdx === -1) return prev;
+        
+        const quest = p.quests[questIdx];
+        const newProgress = quest.progress + amount;
+        
+        if (newProgress >= quest.target) {
+            // COMPLETE
+            ctx.log(`[任务完成] ${p.name} 完成了任务：${quest.name}！`);
+            
+            // Handle Rewards Logic Here or delegate?
+            // Since we are in a reducer, we can modify state directly for simple rewards.
+            let updatedPlayer = { ...p };
+            
+            if (questId === 'quest-swords-temperance') {
+                ctx.log(`[奖励] 手牌上限 +1。`);
+                updatedPlayer.maxHandSize += 1;
+            } else if (questId === 'quest-cups-chariot') {
+                const dmg = p.atk;
+                ctx.log(`[奖励] 对对手造成 ${dmg} 点伤害。`);
+                // Damage is complex (modifies opponent). We need to return a state that reflects damage.
+                // But damagePlayer is an async/action wrapper. 
+                // We should schedule the damage effect? 
+                // Or just apply raw HP mod here (skipping complex mark logic for simplicity within reducer)?
+                // BETTER: Use setTimeout to trigger the action properly after this state update.
+                setTimeout(() => damagePlayer(ctx, getOpponentId(playerId), dmg), 100);
+            } else if (questId === 'quest-wands-star') {
+                // Interaction reward
+                 setTimeout(() => {
+                     ctx.setGameState(curr => {
+                         if (!curr) return null;
+                         return {
+                             ...curr,
+                             interaction: {
+                                 id: `quest-wands-star-reward-${Date.now()}`,
+                                 playerId: playerId,
+                                 title: "任务奖励：权杖·星星",
+                                 description: "选择一张牌置入手牌：",
+                                 options: [
+                                     { label: "☀️ 太阳", action: () => giveCardReward(ctx, playerId, '太阳') },
+                                     { label: "🌙 月亮", action: () => giveCardReward(ctx, playerId, '月亮') },
+                                     { label: "⭐ 星星", action: () => giveCardReward(ctx, playerId, '星星') },
+                                 ]
+                             }
+                         }
+                     });
+                 }, 200);
+            }
+
+            return {
+                ...prev,
+                [key]: { ...updatedPlayer, quests: p.quests.filter(q => q.id !== questId) }
+            };
+        }
+        
+        // Update Progress
+        const newQuests = [...p.quests];
+        newQuests[questIdx] = { ...quest, progress: newProgress };
+        
+        return {
+            ...prev,
+            [key]: { ...p, quests: newQuests }
+        };
+    });
+};
+
+const giveCardReward = (ctx: EffectContext, playerId: number, namePartial: string) => {
+    // Find generic definition. Since suits differ, we pick generic suit? 
+    // Prompt says "Select arbitrary Sun/Moon/Star". Let's give Wands version as default or generic?
+    // Let's search CARD_DEFINITIONS for a matching name.
+    const def = CARD_DEFINITIONS.find(c => c.name.includes(namePartial));
+    if (def) {
+        const newCard = { ...def, instanceId: `reward-${Date.now()}`, marks: [], description: def.description || "" };
+        modifyPlayer(ctx, playerId, p => ({ ...p, hand: [...p.hand, newCard] }));
+        ctx.setGameState((s:any) => s ? ({...s, interaction: null}) : null);
+    }
+};
+

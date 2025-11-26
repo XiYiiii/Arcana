@@ -131,11 +131,24 @@ export const executeResolveEffects = async (
            addLog(`[反转] ${p.name} 的 [${card.name}] 效果将反转！`);
        }
 
-       // Mark Effect Check: Swords Hanged Man (Recover 2HP on play)
+       // --- GENERIC MARK TRIGGERS ---
+       // Swords Hanged Man (Recover 2HP on play)
        if (card.marks.includes('mark-swords-hangedman')) {
           addLog(`[倒吊人] 标记触发！${p.name} 恢复 2 点生命。`);
           modifyPlayer(effCtx, pid, pl => ({ ...pl, hp: pl.hp + 2 }));
           await delay(200);
+       }
+       // Swords Devil (Extra 1 Dmg to opp)
+       if (card.marks.includes('mark-swords-devil')) {
+           addLog(`[宝剑·恶魔] 标记触发！额外造成1点伤害。`);
+           damagePlayer(effCtx, getOpponentId(pid), 1);
+           await delay(200);
+       }
+       // Swords Tower (Self 1 Dmg)
+       if (card.marks.includes('mark-swords-tower')) {
+           addLog(`[宝剑·高塔] 标记触发！自伤1点。`);
+           damagePlayer(effCtx, pid, 1);
+           await delay(200);
        }
        
        if (card.onReveal) {

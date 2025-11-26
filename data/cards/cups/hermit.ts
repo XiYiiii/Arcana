@@ -1,11 +1,12 @@
 
-import { CardDefinition, CardSuit, Keyword } from '../../../types';
-import { modifyPlayer } from '../../../services/actions';
+
+import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
+import { modifyPlayer, shufflePlayerDeck } from '../../../services/actions';
 
 export const CUPS_HERMIT: CardDefinition = {
     id: 'cups-hermit', name: '圣杯·隐者', suit: CardSuit.CUPS, rank: 109, 
-    description: "打出：占卜己方两张牌，然后弃置其中一张。",
-    keywords: [Keyword.SCRY],
+    description: "打出：占卜己方两张牌，然后弃置其中一张。\n插入(任意)：打乱对方的抽牌堆。",
+    keywords: [Keyword.SCRY, Keyword.SHUFFLE],
     onReveal: (ctx) => {
         ctx.setGameState(prev => {
             if(!prev) return null;
@@ -38,5 +39,10 @@ export const CUPS_HERMIT: CardDefinition = {
                 }
             };
         });
+    },
+    canInstant: (w) => w !== InstantWindow.NONE,
+    onInstant: (ctx) => {
+        // Shuffle opponent deck
+        shufflePlayerDeck(ctx, ctx.sourcePlayerId === 1 ? 2 : 1);
     }
 };

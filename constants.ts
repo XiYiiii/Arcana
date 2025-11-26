@@ -46,6 +46,8 @@ export const KEYWORD_DISPLAY_NAMES: Record<Keyword, string> = {
   [Keyword.SUBSTITUTE]: "替身",
   [Keyword.PIERCE]: "穿透",
   [Keyword.SHUFFLE]: "打乱",
+  [Keyword.FIELD]: "场地",
+  [Keyword.QUEST]: "任务",
 };
 
 export const KEYWORD_DESCRIPTIONS: Record<Keyword, string> = {
@@ -62,4 +64,6 @@ export const KEYWORD_DESCRIPTIONS: Record<Keyword, string> = {
   [Keyword.SUBSTITUTE]: "将此牌置于场上，并替原本的卡牌承受效果。",
   [Keyword.PIERCE]: "该伤害无视免疫效果。",
   [Keyword.SHUFFLE]: "随机打乱牌堆顺序。",
+  [Keyword.FIELD]: "设置一个持续生效的场地环境，直到被新的场地取代或被弃置。",
+  [Keyword.QUEST]: "获得一个持续的任务，完成条件后触发效果。上限2个。",
 };

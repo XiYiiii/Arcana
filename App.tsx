@@ -1,9 +1,11 @@
 
 
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from './types';
 import { generateDeck, shuffleDeck } from './services/gameUtils';
-import { drawCards, discardCards, getOpponentId, destroyCard } from './services/actions'; 
+import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress } from './services/actions'; 
 import { MAX_HAND_SIZE, INITIAL_HP, INITIAL_ATK } from './constants';
 import { CARD_DEFINITIONS } from './data/cards';
 
@@ -90,7 +92,8 @@ export default function App() {
         preventHealing: false, hasLifesteal: false, damageReflection: false, incomingDamageConversion: false, nextDamageDouble: false,
         swordsHangedManActive: false,
         delayedEffects: [],
-        maxHandSize: MAX_HAND_SIZE, skipDiscardThisTurn: false
+        maxHandSize: MAX_HAND_SIZE, skipDiscardThisTurn: false,
+        quests: []
       });
 
       setGameState({
@@ -100,6 +103,7 @@ export default function App() {
         logs: ["游戏开始。", `初始生命: ${initialHp}, 手牌: ${initialHandSize}`],
         player1: initialPlayerState(1, p1Deck, p1Hand),
         player2: initialPlayerState(2, p2Deck, p2Hand),
+        field: null,
         isResolving: false,
         pendingEffects: [],
         activeEffect: null,
@@ -112,20 +116,6 @@ export default function App() {
       setEnabledCardIds(ids);
       setInitialHp(settings.hp);
       setInitialHandSize(settings.handSize);
-      // Immediately start game after setup
-      // Note: We need to use the new values, so we pass them to a modified init or update state and trigger effect?
-      // Since setState is async, we can't call initGame immediately with state values. 
-      // Instead, we update state and set a flag or just call a version of init that accepts params.
-      // But for simplicity, we update state then let the user click "Start Game" on menu? 
-      // No, "Confirm Start" implies starting.
-      
-      // Ugly hack for immediate start with new values:
-      // We will duplicate the logic or update state and rely on a useEffect? No.
-      // We will just return to menu? 
-      // User flow: Menu -> Setup -> (Confirm) -> Menu (With new settings applied) -> Start Game.
-      // Or Menu -> Setup -> (Confirm) -> Start Game immediately.
-      // Let's do: Update State -> Switch to Menu. The user clicks Start Game on Menu.
-      // This is safer.
       setAppMode('MENU');
   };
 
@@ -150,27 +140,58 @@ export default function App() {
     }
   }, [gameState?.player1.hand.length, gameState?.player2.hand.length, gameState?.isResolving, appMode]);
 
-  // --- Rule: Lock Logic ---
+  // --- Quest Check: Wands Star (Holding Sun & Moon) ---
   useEffect(() => {
       if (appMode !== 'GAME' || !gameState) return;
+      
+      const checkWandsStarQuest = (pid: number) => {
+          const p = pid === 1 ? gameState.player1 : gameState.player2;
+          const hasQuest = p.quests.some(q => q.id === 'quest-wands-star');
+          if (hasQuest) {
+              const hasSun = p.hand.some(c => c.name.includes('太阳'));
+              const hasMoon = p.hand.some(c => c.name.includes('月亮'));
+              if (hasSun && hasMoon) {
+                  // Quest Complete condition met
+                  const ctx = createEffectContext(pid, p.hand[0] || {id:'dummy', name:'dummy'} as any);
+                  updateQuestProgress(ctx, pid, 'quest-wands-star', 1);
+              }
+          }
+      }
+      checkWandsStarQuest(1);
+      checkWandsStarQuest(2);
+  }, [gameState?.player1.hand, gameState?.player2.hand]); // Check whenever hands change
+
+  // --- Rule: Lock Logic & Field Interactions ---
+  useEffect(() => {
+      if (appMode !== 'GAME' || !gameState) return;
+
+      const isSwordsStarActive = gameState.field?.active && gameState.field.card.name.includes('宝剑·星星');
 
       const updateLocks = (p: PlayerState) => {
           const lovers = p.hand.filter(c => c.marks.includes('mark-lovers') || c.marks.includes('mark-swords-lovers'));
           const justice = p.hand.find(c => c.marks.includes('mark-justice'));
+          const wandsJustice = p.hand.find(c => c.marks.includes('mark-wands-justice'));
           const sun = p.hand.find(c => c.marks.includes('mark-sun'));
           
           const swordsLoversCount = p.hand.filter(c => c.marks.includes('mark-swords-lovers')).length;
           const hasWandsLoversPair = p.hand.filter(c => c.marks.includes('mark-lovers')).length >= 2;
           const hasJustice = !!justice;
+          const hasWandsJustice = !!wandsJustice;
           
           return p.hand.map(c => {
               if (c.isTreasure) return { ...c, isLocked: false }; 
+
+              // Swords Star Logic: Negate Sun's passive/locks
+              if (isSwordsStarActive && c.name.includes('太阳')) {
+                   return { ...c, isLocked: false };
+              }
 
               let shouldLock = false;
               if (hasWandsLoversPair && c.marks.includes('mark-lovers')) shouldLock = true;
               if (c.marks.includes('mark-swords-lovers') && swordsLoversCount >= 2) shouldLock = true;
               
               if (hasJustice && !c.marks.includes('mark-justice')) shouldLock = true;
+              if (hasWandsJustice && !c.marks.includes('mark-wands-justice')) shouldLock = true;
               if (c.marks.includes('mark-sun')) shouldLock = true;
 
               if (c.isLocked !== shouldLock) {
@@ -197,7 +218,7 @@ export default function App() {
           });
       }
 
-  }, [gameState?.player1.hand, gameState?.player2.hand, appMode]);
+  }, [gameState?.player1.hand, gameState?.player2.hand, gameState?.field, appMode]);
 
   // --- Effect Queue Processor ---
   useEffect(() => {
@@ -378,12 +399,15 @@ export default function App() {
   // --- GAME RENDER ---
   if (!gameState) return <div className="bg-stone-900 h-screen text-stone-400 flex items-center justify-center font-serif">Initializing...</div>;
 
-  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction } = gameState;
+  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState;
   
+  // Swords Star Field Logic Check for UI enable
+  const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
+
   const p1Sel = player1.hand.find(c => c.instanceId === p1SelectedCardId);
   const p2Sel = player2.hand.find(c => c.instanceId === p2SelectedCardId);
-  const canSetP1 = player1.hand.length > 0 ? (p1Sel && p1Sel.canSet !== false && !p1Sel.isLocked) : true;
-  const canSetP2 = player2.hand.length > 0 ? (p2Sel && p2Sel.canSet !== false && !p2Sel.isLocked) : true;
+  const canSetP1 = player1.hand.length > 0 ? (p1Sel && (p1Sel.canSet !== false || (isSwordsStarActive && p1Sel.name.includes('太阳'))) && !p1Sel.isLocked) : true;
+  const canSetP2 = player2.hand.length > 0 ? (p2Sel && (p2Sel.canSet !== false || (isSwordsStarActive && p2Sel.name.includes('太阳'))) && !p2Sel.isLocked) : true;
   const canInstantP1 = p1Sel && p1Sel.canInstant?.(instantWindow);
   const canInstantP2 = p2Sel && p2Sel.canInstant?.(instantWindow);
   
@@ -475,6 +499,11 @@ export default function App() {
              instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
              instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
          </span>
+         {gameState.field && (
+             <span className="ml-4 text-emerald-500 font-serif font-bold">
+                 🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
+             </span>
+         )}
       </div>
 
       {isResolving && !activeEffect && !interaction && (
@@ -494,7 +523,7 @@ export default function App() {
           onViewDiscard={() => setViewingDiscardPid(2)}
         />
         
-        <FieldArea player1={player1} player2={player2} />
+        <FieldArea gameState={gameState} player1={player1} player2={player2} />
 
         <PlayerArea 
           player={player1} phase={phase} 

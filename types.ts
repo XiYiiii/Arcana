@@ -41,6 +41,8 @@ export enum Keyword {
   SUBSTITUTE = 'SUBSTITUTE', // 替身
   PIERCE = 'PIERCE',     // 穿透
   SHUFFLE = 'SHUFFLE',   // 打乱
+  FIELD = 'FIELD',       // 场地
+  QUEST = 'QUEST',       // 任务
 }
 
 export type EffectContext = {
@@ -81,7 +83,7 @@ export interface CardDefinition {
 
 export interface Card extends CardDefinition {
   instanceId: string;
-  marks: string[]; // Cards can hold multiple marks
+  marks: string[]; // Cards can hold multiple marks (Now restricted to 1 by logic)
   isLocked?: boolean; // New: Cannot be set if true
   tempRank?: number; // New: For temporary rank changes (Magician)
   description: string; // Required in runtime instance
@@ -99,6 +101,21 @@ export interface DelayedEffect {
   action: 'DRAW' | 'DISCARD' | 'ATK_CHANGE';
   amount: number;
   sourceCardName: string;
+}
+
+export interface FieldState {
+  card: Card;
+  ownerId: number;
+  counter: number; // General purpose counter (e.g. discards)
+  active: boolean; // Is the field effect currently active?
+}
+
+export interface Quest {
+  id: string;
+  name: string;
+  description: string;
+  progress: number;
+  target: number;
 }
 
 export interface PlayerState {
@@ -138,6 +155,8 @@ export interface PlayerState {
   // Persistent Stats
   maxHandSize: number; // Default 3
   skipDiscardThisTurn: boolean; // For Treasure Wands
+  
+  quests: Quest[]; // Active quests
 }
 
 export interface InteractionRequest {
@@ -161,6 +180,7 @@ export interface GameState {
   turnCount: number;
   player1: PlayerState;
   player2: PlayerState;
+  field: FieldState | null; // The global field card
   logs: string[];
   isResolving: boolean; 
   pendingEffects: PendingEffect[];

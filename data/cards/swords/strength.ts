@@ -8,15 +8,26 @@ export const SWORDS_STRENGTH: CardDefinition = {
     description: "打出：下一回合Atk+2。\n弃置：下一回合Atk-1。",
     keywords: [],
     onReveal: (ctx) => {
+        // Queue positive buff for next turn
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({
             ...p,
-            delayedEffects: [...p.delayedEffects, { turnsRemaining: 1, action: 'ATK_CHANGE', amount: 2, sourceCardName: '宝剑·力量' }]
+            delayedEffects: [
+                ...p.delayedEffects, 
+                // Effect to Add ATK at start of next turn
+                { turnsRemaining: 1, action: 'ATK_CHANGE', amount: 2, sourceCardName: '宝剑·力量(Buff)' },
+                // Effect to Remove ATK at start of turn after next (effectively duration 1 turn)
+                { turnsRemaining: 2, action: 'ATK_CHANGE', amount: -2, sourceCardName: '宝剑·力量(EndBuff)' }
+            ]
         }));
     },
     onDiscard: (ctx) => {
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({
             ...p,
-            delayedEffects: [...p.delayedEffects, { turnsRemaining: 1, action: 'ATK_CHANGE', amount: -1, sourceCardName: '宝剑·力量(弃置)' }]
+            delayedEffects: [
+                ...p.delayedEffects, 
+                { turnsRemaining: 1, action: 'ATK_CHANGE', amount: -1, sourceCardName: '宝剑·力量(Debuff)' },
+                { turnsRemaining: 2, action: 'ATK_CHANGE', amount: 1, sourceCardName: '宝剑·力量(EndDebuff)' }
+            ]
         }));
     }
 };

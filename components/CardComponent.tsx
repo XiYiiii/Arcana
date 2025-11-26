@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef } from 'react';
 import { Card } from '../types';
 import { SUIT_COLORS, SUIT_ICONS, KEYWORD_DESCRIPTIONS, KEYWORD_DISPLAY_NAMES } from '../constants';
@@ -66,8 +67,9 @@ export const CardComponent: React.FC<CardComponentProps> = ({
 
   // Parse and structure the description with hanging indents for tags
   const renderDescription = (text: string) => {
-     // Split by tags like 【打出】, using lookahead to keep the delimiter
-     const blocks = text.split(/(?=【)/g);
+     // Split by tags like 【打出】, using lookahead to keep the delimiter.
+     // Also split by (场地...) and (标记...) to ensure they are treated as separate blocks.
+     const blocks = text.split(/(?=【)|(?=\(场地)|(?=\(标记)/g);
 
      return blocks.map((block, i) => {
         // Match structure: 【Tag】 Content
@@ -83,7 +85,7 @@ export const CardComponent: React.FC<CardComponentProps> = ({
            const instantMatch = tagRaw.match(/^【插入[\(（](.*?)[\)）]】$/);
            // Check for 【印记(Name)】 format
            const markMatch = tagRaw.match(/^【印记[\(（](.*?)[\)）]】$/);
-
+           
            if (instantMatch) {
                const phase = instantMatch[1];
                tagNode = (
@@ -126,6 +128,44 @@ export const CardComponent: React.FC<CardComponentProps> = ({
            );
         }
         
+        // Handle Field description lines that start with (场地...)
+        const fieldMatch = block.trim().match(/^\(场地[“"](.*?)[”"]\)(.*)/);
+        if (fieldMatch) {
+            const fieldName = fieldMatch[1];
+            const content = fieldMatch[2].trim();
+            const tagNode = (
+               <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-emerald-950 rounded-sm px-0.5 py-[1px] border border-emerald-800 shadow-sm min-w-[24px] mt-[1px]">
+                   <span className="font-black text-emerald-200 text-[9px] leading-none">场地</span>
+                   <span className="text-[6px] font-bold text-emerald-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({fieldName})</span>
+               </div>
+            );
+            return (
+              <div key={i} className="flex items-start mb-1 last:mb-0">
+                 {tagNode}
+                 <span className="text-stone-300 text-[10px] leading-tight flex-1 whitespace-pre-wrap pt-[1px] font-medium break-all">{renderTextContent(content)}</span>
+              </div>
+            );
+        }
+        
+        // Mark description lines that start with (标记...)
+        const simpleMarkMatch = block.trim().match(/^\(标记[“"](.*?)[”"]\)(.*)/);
+        if (simpleMarkMatch) {
+            const markName = simpleMarkMatch[1];
+            const content = simpleMarkMatch[2].trim();
+            const tagNode = (
+               <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-slate-800 rounded-sm px-0.5 py-[1px] border border-slate-600 shadow-sm min-w-[24px] mt-[1px]">
+                   <span className="font-black text-slate-200 text-[9px] leading-none">印记</span>
+                   <span className="text-[6px] font-bold text-slate-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({markName})</span>
+               </div>
+            );
+            return (
+              <div key={i} className="flex items-start mb-1 last:mb-0">
+                 {tagNode}
+                 <span className="text-stone-300 text-[10px] leading-tight flex-1 whitespace-pre-wrap pt-[1px] font-medium break-all">{renderTextContent(content)}</span>
+              </div>
+            );
+        }
+
         // Fallback for text without tags
         if (!block.trim()) return null;
         return <div key={i} className="mb-1 last:mb-0 text-stone-400 text-[9px] italic leading-tight whitespace-pre-wrap border-l border-stone-600 pl-1.5 break-all">{renderTextContent(block)}</div>;

@@ -1,5 +1,3 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { damagePlayer, getOpponentId, putCardInDeck } from '../../../services/actions';
 
@@ -38,15 +36,10 @@ export const SWORDS_WHEEL: CardDefinition = {
         const oppId = getOpponentId(ctx.sourcePlayerId);
         damagePlayer(ctx, oppId, 2 * atk);
         
-        // Remove from field/hand logic is standard flow BUT we want it to go to opp DECK instead of discard.
-        // We handle this by modifying state now and removing it from current player's control.
-        // Usually cards go to discard pile after resolve.
-        // We move it now. When standard cleanup happens, it won't be found in slot.
-        
+        // Remove from fieldSlot (so standard discard phase doesn't see it)
         ctx.setGameState(prev => {
             if(!prev) return null;
             const myKey = ctx.sourcePlayerId === 1 ? 'player1' : 'player2';
-            // It is in fieldSlot
             return {
                 ...prev,
                 [myKey]: { ...prev[myKey], fieldSlot: null }
