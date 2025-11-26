@@ -1,7 +1,3 @@
-
-
-
-
 import { EffectContext, PlayerState, GameState, Card, CardSuit, Quest, CardDefinition, VisualEvent } from '../types';
 import { shuffleDeck, getArcanaNumber } from './gameUtils';
 import { CARD_DEFINITIONS } from '../data/cards';
@@ -17,6 +13,24 @@ export const getTargetId = (ctx: EffectContext, intendedTargetId: number): numbe
   if (intendedTargetId === ctx.sourcePlayerId) return oppId;
   if (intendedTargetId === oppId) return ctx.sourcePlayerId;
   return intendedTargetId; 
+};
+
+// Check if a treasure is already in play (Hand, Deck, Discard, Field)
+// If it is, it's NOT in the vault.
+export const isTreasureInVault = (gameState: GameState, treasureId: string): boolean => {
+    const checkLoc = (p: PlayerState) => {
+        if (p.hand.some(c => c.id === treasureId)) return true;
+        if (p.deck.some(c => c.id === treasureId)) return true;
+        if (p.discardPile.some(c => c.id === treasureId)) return true;
+        if (p.fieldSlot?.id === treasureId) return true;
+        return false;
+    };
+    
+    if (checkLoc(gameState.player1)) return false;
+    if (checkLoc(gameState.player2)) return false;
+    if (gameState.field?.card.id === treasureId) return false;
+    
+    return true;
 };
 
 // Check Pentacles Wheel activation condition (MyHP >= 2 * OppHP)
@@ -119,6 +133,9 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
     let p = prev[key];
     let source = prev[sourceKey];
 
+    // Logic: Pentacles World Effect (Global Piercing) check on SOURCE
+    const effectiveIsPiercing = isPiercing || source.piercingDamageThisTurn;
+
     // Logic: Swords Priestess Instant (Convert Incoming > Atk to Heal)
     if (p.incomingDamageConversion) {
         if (amount > p.atk) {
@@ -132,7 +149,7 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
     }
 
     // Logic: Immunity
-    if (p.immunityThisTurn && !isPiercing) {
+    if (p.immunityThisTurn && !effectiveIsPiercing) {
       ctx.log(`[防御] ${p.name} 免疫了伤害！`);
       return prev;
     }
@@ -146,7 +163,10 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
     let newHp = p.hp - actualDmg;
     const damageDealt = p.hp - newHp;
 
-    ctx.log(`[伤害] ${p.name} 受到了 ${damageDealt} 点${isPiercing ? '穿透' : ''}伤害！`);
+    ctx.log(`[伤害] ${p.name} 受到了 ${damageDealt} 点${effectiveIsPiercing ? '穿透' : ''}伤害！`);
+    
+    // Accumulate Damage Taken for Pentacles Judgment check
+    const newDamageTakenThisTurn = p.damageTakenThisTurn + damageDealt;
     
     const nextDamageDouble = false; 
 
@@ -216,7 +236,7 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
     }
 
     // Construct final objects
-    const finalP = { ...p, hp: newHp, nextDamageDouble };
+    const finalP = { ...p, hp: newHp, nextDamageDouble, damageTakenThisTurn: newDamageTakenThisTurn };
     const finalSource = { ...source, hp: newSourceHp, hand: newSourceHand };
 
     // Need to assign correct P1/P2
@@ -262,6 +282,15 @@ export const transformCard = (ctx: EffectContext, targetPlayerId: number, cardIn
         if(!prev) return null;
         const key = targetPlayerId === 1 ? 'player1' : 'player2';
         const p = prev[key];
+        
+        // CHECK PREVENT TRANSFORM (Pentacles Hanged Man)
+        if (p.preventTransform > 0) {
+            ctx.log(`[变化抵抗] ${p.name} 的“倒吊人”效果阻止了变化！(剩余 ${p.preventTransform-1} 次)`);
+            return {
+                ...prev,
+                [key]: { ...p, preventTransform: p.preventTransform - 1 }
+            };
+        }
         
         const cardInHand = p.hand.find(c => c.instanceId === cardInstanceId);
         
@@ -778,7 +807,7 @@ export const setField = (ctx: EffectContext, card: Card, activateNow: boolean = 
 export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceIds: string[]) => {
     const finalTargetId = getTargetId(ctx, playerId);
     
-    // Check Quest Progress for "Swords Temperance" (Discard cards)
+    // Check Quest Progress for "Swords Temperance" (Discard cards) - Self Check
     if (cardInstanceIds.length > 0) {
         updateQuestProgress(ctx, finalTargetId, 'quest-swords-temperance', cardInstanceIds.length);
     }
@@ -814,6 +843,19 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
         });
         
         const discardedCards = p.hand.filter(c => idsToDiscard.includes(c.instanceId));
+
+        // Check for Mark Swords Hierophant discard trigger (Global Check)
+        discardedCards.forEach(c => {
+             if (c.marks.includes('mark-swords-hierophant')) {
+                 // Use timeout to break state update cycle and ensure log order
+                 setTimeout(() => {
+                     // Need to access updated state for current ATK? 
+                     // Using closure `p.atk` is fine for current snapshot.
+                     ctx.log(`[宝剑·教皇] 标记触发 (弃置)！${p.name} 受到 ${p.atk} 点伤害。`);
+                     damagePlayer(ctx, finalTargetId, p.atk);
+                 }, 100);
+             }
+        });
         
         let nextState = {
             ...prev,
@@ -823,29 +865,8 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
 
         // --- FIELD COUNTERS LOGIC ---
         if (nextState.field) {
-            // Wands Magician: After 4 discards, recycle discard piles to deck
-            if (nextState.field.card.name.includes('权杖·魔术师')) {
-                const newCounter = nextState.field.counter + discardedCards.length;
-                if (newCounter >= 4) {
-                    ctx.log(`[场地] 权杖·魔术师激活！所有弃置牌回收至牌堆！`);
-                    // Recycle
-                    const recycle = (pl: PlayerState) => ({
-                        ...pl,
-                        deck: shuffleDeck([...pl.deck, ...pl.discardPile]),
-                        discardPile: []
-                    });
-                    nextState = {
-                        ...nextState,
-                        player1: recycle(nextState.player1),
-                        player2: recycle(nextState.player2),
-                        field: { ...nextState.field, counter: newCounter } // Keep counter rising or reset? Assuming continuous.
-                    };
-                } else {
-                    nextState.field = { ...nextState.field, counter: newCounter };
-                }
-            }
-            // Cups Temperance: After 4 discards, discard ALL hands then discard field
-            else if (nextState.field.card.name.includes('圣杯·节制')) {
+            // Cups Temperance: After 4 discards (GLOBAL), discard ALL hands then discard field
+            if (nextState.field.card.name.includes('圣杯·节制')) {
                 const newCounter = nextState.field.counter + discardedCards.length;
                 if (newCounter >= 4) {
                     ctx.log(`[场地] 圣杯·节制激活！清空手牌并摧毁场地！`);
@@ -1113,14 +1134,21 @@ export const updateQuestProgress = (ctx: EffectContext, playerId: number, questI
                                         deck: [...pl.deck.filter(dc => dc.instanceId !== c.instanceId), c]
                                     }));
                                     ctx.log(`[星币·女祭司] 将 [${c.name}] 移到了牌堆底。`);
-                                    // Usually scry allows multiple, but simplified to picking 1 or repeating.
-                                    // For simplicity, pick 1 closes dialog.
                                     ctx.setGameState(s=>s?({...s, interaction:null}):null);
                                 }
                             }
                         }
                     });
                 }, 200);
+            } else if (questId === 'quest-pentacles-moon') {
+                // Pentacles Moon Reward: Mark all hand with mark-pentacles-moon
+                 setTimeout(() => {
+                     ctx.log(`[奖励] 所有手牌获得【星币·月亮】印记。`);
+                     modifyPlayer(ctx, playerId, p => ({
+                         ...p,
+                         hand: p.hand.map(c => addMarkToCard(c, 'mark-pentacles-moon'))
+                     }));
+                 }, 200);
             }
 
             return {
@@ -1141,12 +1169,20 @@ export const updateQuestProgress = (ctx: EffectContext, playerId: number, questI
     });
 };
 
-const giveCardReward = (ctx: EffectContext, playerId: number, identifier: string, isIdMatch: boolean = false) => {
+// Check if treasure available in vault
+export const giveCardReward = (ctx: EffectContext, playerId: number, identifier: string, isIdMatch: boolean = false) => {
     // If isIdMatch is true, we look for exact ID match (e.g. treasure-cups)
     // If false, we look for name inclusion (e.g. '太阳')
     const def = CARD_DEFINITIONS.find(c => isIdMatch ? c.id === identifier : c.name.includes(identifier));
     
     if (def) {
+        // Treasure Availability Check
+        if (def.isTreasure && isTreasureInVault(ctx.gameState, def.id)) {
+             ctx.log(`[获取失败] ${def.name} 已在游戏中，宝库为空！`);
+             ctx.setGameState((s:any) => s ? ({...s, interaction: null}) : null);
+             return;
+        }
+
         const newCard = { ...def, instanceId: `reward-${Date.now()}`, marks: [], description: def.description || "" };
         modifyPlayer(ctx, playerId, p => ({ ...p, hand: [...p.hand, newCard] }));
         ctx.log(`[获取] 获得了 [${def.name}]！`);

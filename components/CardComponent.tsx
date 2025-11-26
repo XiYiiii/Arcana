@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Card } from '../types';
+import { Card, CardDefinition } from '../types';
 import { SUIT_COLORS, SUIT_ICONS, KEYWORD_DESCRIPTIONS, KEYWORD_DISPLAY_NAMES } from '../constants';
+import { CARD_DEFINITIONS } from '../data/cards';
 
 interface CardComponentProps {
   card: Card | null;
@@ -10,6 +11,34 @@ interface CardComponentProps {
   disabled?: boolean;
   label?: string;
   tooltipSide?: 'left' | 'right';
+}
+
+// Helper to resolve mark to card definition
+const getCardFromMark = (mark: string): CardDefinition | null => {
+    // Special mappings for simplified mark names or cross-suit marks
+    const map: Record<string, string> = {
+        'mark-death': 'wands-death', // Usually from Wands Death
+        'mark-lovers': 'wands-lovers',
+        'mark-justice': 'wands-justice',
+        'mark-sun': 'wands-sun',
+        'mark-disabled': '', 
+        'mark-pentacles-fool': 'pentacles-fool',
+    };
+
+    if (map[mark]) return CARD_DEFINITIONS.find(c => c.id === map[mark]) || null;
+
+    // Default: try removing "mark-" and finding ID
+    const coreId = mark.replace(/^mark-/, '');
+    
+    // Exact match
+    let found = CARD_DEFINITIONS.find(c => c.id === coreId);
+    if (found) return found;
+
+    // Suffix match (e.g. mark-cups-fool -> cups-fool)
+    found = CARD_DEFINITIONS.find(c => c.id === coreId);
+    if (found) return found;
+    
+    return null;
 }
 
 export const CardComponent: React.FC<CardComponentProps> = ({ 
@@ -148,9 +177,10 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   };
 
   const keywordsToShow = card.keywords && card.keywords.length > 0 ? card.keywords : [];
+  const marksToShow = card.marks || [];
   
-  // Tooltip as a child to follow transformations
-  const tooltipContent = showTooltip && keywordsToShow.length > 0 ? (
+  // Right Side Tooltip (Keywords)
+  const keywordTooltip = showTooltip && keywordsToShow.length > 0 ? (
      <div 
         className={`absolute top-0 z-[9999] pointer-events-none flex flex-col gap-1.5 w-48 bg-stone-950/95 text-stone-200 p-2.5 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.9)] border border-stone-500/50 backdrop-blur-xl
            ${tooltipSide === 'right' ? 'left-[105%]' : 'right-[105%]'}`}
@@ -172,6 +202,50 @@ export const CardComponent: React.FC<CardComponentProps> = ({
               <span className="text-stone-400 text-[9px] leading-normal block pl-2 opacity-90">{KEYWORD_DESCRIPTIONS[k]}</span>
            </div>
         ))}
+     </div>
+  ) : null;
+
+  // Left Side Tooltip (Marks)
+  // Float left if possible, or right if tooltipSide is 'left' (avoid conflict)?
+  // Actually, keyword tooltip respects `tooltipSide`. 
+  // Marks should appear on the OPPOSITE side if possible, or stacked?
+  // User requested: "float on left, distinct from keywords on right".
+  // Let's force it to left: right-[105%]
+  // If keyword tooltip is also on left (tooltipSide='left'), they might overlap. 
+  // But usually CardComponent usage defaults to 'right' except in hand fan.
+  // In hand fan, cards on right side have tooltipSide='left'. 
+  // In that case, keywords are on left. Marks should probably be on right then?
+  // Let's make Marks tooltip respect `tooltipSide === 'right' ? 'left-side' : 'right-side'`.
+  // Wait, user said "marks on left, keywords on right".
+  // Let's try to stick to that unless it flies off screen.
+  
+  const marksTooltip = showTooltip && marksToShow.length > 0 ? (
+     <div 
+        className={`absolute top-0 z-[9999] pointer-events-none flex flex-col gap-2 w-48 bg-stone-950/95 text-stone-200 p-2 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.9)] border border-stone-500/50 backdrop-blur-xl
+           right-[105%] mr-1`} // Force Left Side
+     >
+        {/* Arrow pointing right */}
+        <div className="absolute top-6 left-full w-0 h-0 border-[6px] border-transparent border-l-stone-500/50 ml-[1px]"></div>
+        
+        <div className="text-[10px] font-bold text-stone-500 uppercase tracking-widest border-b border-stone-800 pb-1 mb-1 flex items-center gap-1">
+            <span>🔹</span> 标记源
+        </div>
+        
+        {marksToShow.map((m, i) => {
+             const sourceCard = getCardFromMark(m);
+             return (
+                 <div key={i} className="flex flex-col gap-1 mb-2 last:mb-0">
+                     <span className="text-[9px] text-amber-200/80 font-mono bg-stone-900 px-1 py-0.5 rounded w-fit border border-stone-800">{m.replace('mark-', '').toUpperCase()}</span>
+                     {sourceCard ? (
+                         <div className="scale-75 origin-top-left w-[133%] border border-stone-700/50 rounded-lg overflow-hidden shadow-lg">
+                             <CardComponent card={{...sourceCard, instanceId: `preview-mark-${m}`, marks: [], description: sourceCard.description || ''}} isFaceUp={true} disabled />
+                         </div>
+                     ) : (
+                         <span className="text-[10px] italic text-stone-600 pl-1">未知来源</span>
+                     )}
+                 </div>
+             )
+        })}
      </div>
   ) : null;
 
@@ -270,7 +344,8 @@ export const CardComponent: React.FC<CardComponentProps> = ({
       onMouseLeave={handleMouseLeave}
     >
       {innerContent}
-      {tooltipContent}
+      {keywordTooltip}
+      {marksTooltip}
     </div>
   );
 };

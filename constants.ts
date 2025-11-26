@@ -65,7 +65,7 @@ export const KEYWORD_DESCRIPTIONS: Record<Keyword, string> = {
   [Keyword.IMPRINT]: "赋予卡牌的额外效果标记。",
   [Keyword.SUBSTITUTE]: "将此牌置于场上，并替原本的卡牌承受效果。",
   [Keyword.PIERCE]: "该伤害无视免疫效果。",
-  [Keyword.SHUFFLE]: "随机打乱牌堆顺序。",
+  [Keyword.SHUFFLE]: "随机打乱抽牌堆顺序。",
   [Keyword.FIELD]: "设置一个持续生效的场地环境，直到被新的场地取代或被弃置。",
   [Keyword.QUEST]: "获得一个持续的任务，完成条件后触发效果。上限2个。",
   [Keyword.LOCK]: "被锁定的卡牌无法被打出，直到下一回合。",

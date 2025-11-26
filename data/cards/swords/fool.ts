@@ -1,3 +1,5 @@
+
+
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { damagePlayer, drawCards, modifyPlayer, discardCards, getOpponentId } from '../../../services/actions';
 
@@ -17,8 +19,9 @@ export const SWORDS_FOOL: CardDefinition = {
     },
     canInstant: (w) => w === InstantWindow.BEFORE_REVEAL,
     onInstant: (ctx) => {
+        // "本回合免疫伤害，下次受伤翻倍"
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({ ...p, immunityThisTurn: true, nextDamageDouble: true }));
-        ctx.log("【愚者】嘲弄！伤害无效，但下次受伤将翻倍。");
+        ctx.log("【愚者】嘲弄！本回合免疫伤害，但下次受伤翻倍。");
     },
     onDiscard: (ctx) => {
         const atk = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].atk;

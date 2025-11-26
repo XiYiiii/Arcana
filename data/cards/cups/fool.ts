@@ -1,3 +1,5 @@
+
+
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { modifyPlayer, drawCards, getOpponentId, addMarkToCard, putCardInDeck } from '../../../services/actions';
 
@@ -11,31 +13,28 @@ export const CUPS_FOOL: CardDefinition = {
                 id: `cups-fool-draw-${Date.now()}`,
                 playerId: ctx.sourcePlayerId,
                 title: "圣杯·愚者",
-                description: "是否消除此牌特效并标记对手一张牌？(否则保持原样)",
+                description: "是否消除此牌特效并随机标记对手一张牌？(否则保持原样)",
                 options: [
                     {
                         label: "消除特效并标记",
                         action: () => {
                             const oppId = getOpponentId(ctx.sourcePlayerId);
-                            ctx.setGameState(s => {
-                                if(!s) return null;
+                            // Random mark logic
+                            modifyPlayer(ctx, oppId, p => {
+                                if (p.hand.length === 0) return p;
+                                const r = Math.floor(Math.random() * p.hand.length);
                                 return {
-                                    ...s,
-                                    interaction: {
-                                        id: `cups-fool-select-${Date.now()}`,
-                                        playerId: ctx.sourcePlayerId,
-                                        title: "选择目标",
-                                        description: "选择对手手牌进行标记:",
-                                        inputType: 'CARD_SELECT',
-                                        cardsToSelect: s[oppId===1?'player1':'player2'].hand,
-                                        onCardSelect: (c) => {
-                                            modifyPlayer(ctx, oppId, p => ({...p, hand: p.hand.map(h => h.instanceId === c.instanceId ? addMarkToCard(h, 'mark-cups-fool') : h)}));
-                                            modifyPlayer(ctx, ctx.sourcePlayerId, p => ({...p, hand: p.hand.map(h => h.instanceId === ctx.card.instanceId ? addMarkToCard(h, 'mark-disabled') : h)}));
-                                            ctx.setGameState(curr => curr ? ({...curr, interaction: null}) : null);
-                                        }
-                                    }
+                                    ...p,
+                                    hand: p.hand.map((h, i) => i === r ? addMarkToCard(h, 'mark-cups-fool') : h)
                                 };
                             });
+                            // Mark self disabled
+                            modifyPlayer(ctx, ctx.sourcePlayerId, p => ({
+                                ...p, 
+                                hand: p.hand.map(h => h.instanceId === ctx.card.instanceId ? addMarkToCard(h, 'mark-disabled') : h)
+                            }));
+                            ctx.log("【圣杯·愚者】嘲弄！随机标记了对手手牌。");
+                            ctx.setGameState(curr => curr ? ({...curr, interaction: null}) : null);
                         }
                     },
                     { label: "保留特效", action: () => ctx.setGameState(s => s?({...s, interaction:null}):null) }

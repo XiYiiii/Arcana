@@ -6,6 +6,7 @@ import { CardComponent } from '../CardComponent';
 
 export const InteractionOverlay = ({ request }: { request: InteractionRequest }) => {
   const [numberVal, setNumberVal] = useState(request.min || 1);
+  const [hoveredOptionIndex, setHoveredOptionIndex] = useState<number | null>(null);
 
   if (!request) return null;
 
@@ -66,15 +67,29 @@ export const InteractionOverlay = ({ request }: { request: InteractionRequest })
           )}
 
           {request.inputType !== 'NUMBER_INPUT' && request.inputType !== 'CARD_SELECT' && (
-            <div className="flex gap-4 justify-center flex-wrap z-10">
+            <div className="flex gap-4 justify-center flex-wrap z-10 relative">
                {request.options && request.options.map((opt, idx) => (
-                  <button 
-                    key={idx}
-                    onClick={opt.action}
-                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 border-b-4 border-indigo-900 active:border-b-0 active:translate-y-1 text-white rounded-lg font-bold text-sm transition-all min-w-[120px]"
-                  >
-                     {opt.label}
-                  </button>
+                  <div key={idx} className="relative group/opt">
+                      <button 
+                        onClick={opt.action}
+                        onMouseEnter={() => setHoveredOptionIndex(idx)}
+                        onMouseLeave={() => setHoveredOptionIndex(null)}
+                        className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 border-b-4 border-indigo-900 active:border-b-0 active:translate-y-1 text-white rounded-lg font-bold text-sm transition-all min-w-[120px]"
+                      >
+                         {opt.label}
+                      </button>
+
+                      {/* Hover Card Tooltip */}
+                      {opt.hoverCard && hoveredOptionIndex === idx && (
+                          <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in zoom-in duration-200 pointer-events-none">
+                              <div className="scale-75 origin-bottom shadow-2xl">
+                                  <CardComponent card={opt.hoverCard} isFaceUp={true} />
+                              </div>
+                              {/* Arrow */}
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-2 border-8 border-transparent border-t-stone-800"></div>
+                          </div>
+                      )}
+                  </div>
                ))}
             </div>
           )}

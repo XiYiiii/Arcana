@@ -1,9 +1,11 @@
+
+
 import { CardDefinition, CardSuit, Keyword, Card } from '../../../types';
 import { modifyPlayer, addMarkToCard } from '../../../services/actions';
 
 export const CUPS_MOON: CardDefinition = {
     id: 'cups-moon', name: '圣杯·月亮', suit: CardSuit.CUPS, rank: 118,
-    keywords: [],
+    keywords: [Keyword.IMPRINT],
     onReveal: (ctx) => {
         ctx.setGameState(prev => ({
             ...prev!,

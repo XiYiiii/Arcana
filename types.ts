@@ -153,6 +153,7 @@ export interface PlayerState {
   hpRecoverNextTurn: number; // HP to recover next turn (Cup Hanged Man)
   invalidateNextPlayedCard: boolean; // Wands Temperance logic (Current effect)
   invalidateNextTurn: boolean; // Wands Temperance logic (Next Turn trigger)
+  preventTransform: number; // Pentacles Hanged Man: Number of transforms to prevent
   
   // Swords Status Flags
   preventHealing: boolean; // Empress: Cannot heal
@@ -162,6 +163,11 @@ export interface PlayerState {
   nextDamageDouble: boolean; // Fool Instant: Next incoming damage doubled
   swordsHangedManActive: boolean; // Swords Hanged Man: Reflect dealt damage to self
   
+  // Damage Tracking
+  damageTakenThisTurn: number; // Tracks damage taken during the current turn (for Pentacles Judgment)
+  piercingDamageThisTurn: boolean; // Current turn attacks pierce
+  piercingDamageNextTurn: boolean; // Next turn attacks pierce
+
   delayedEffects: DelayedEffect[]; // For Wands Hanged Man
   
   // Persistent Stats
@@ -183,7 +189,11 @@ export interface InteractionRequest {
   min?: number; 
   max?: number; 
   onConfirm?: (val: number) => void; 
-  options?: { label: string; action: () => void }[]; 
+  options?: { 
+    label: string; 
+    action: () => void;
+    hoverCard?: Card; // Card to show when hovering this option
+  }[]; 
   // New for Card Select
   cardsToSelect?: Card[];
   onCardSelect?: (card: Card) => void;

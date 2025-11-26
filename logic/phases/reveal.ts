@@ -1,7 +1,6 @@
-
 import { GamePhase, InstantWindow, EffectContext, Card, PendingEffect, Keyword } from '../../types';
-import { damagePlayer, modifyPlayer, getOpponentId, drawCards, destroyCard, updateQuestProgress } from '../../services/actions';
-import { compareCards } from '../../services/gameUtils';
+import { damagePlayer, modifyPlayer, getOpponentId, drawCards, destroyCard, updateQuestProgress, discardCards } from '../../services/actions';
+import { compareCards, shuffleDeck } from '../../services/gameUtils';
 
 const DELAY_MS = 600; 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -112,6 +111,31 @@ export const executeResolveEffects = async (
   const p2Card = gameStateRef.current!.player2.fieldSlot;
   const comparison = compareCards(p1Card, p2Card);
   const executionOrder = comparison < 0 ? [1, 2] : comparison > 0 ? [2, 1] : [1, 2];
+  
+  // Wands Magician Field Logic (Count played cards)
+  if (gameStateRef.current!.field && gameStateRef.current!.field.active && gameStateRef.current!.field.card.name.includes('权杖·魔术师')) {
+      const increment = (p1Card ? 1 : 0) + (p2Card ? 1 : 0);
+      let nextField = { ...gameStateRef.current!.field, counter: gameStateRef.current!.field.counter + increment };
+      
+      // Check activation
+      if (nextField.counter >= 4) {
+          addLog(`[场地] 权杖·魔术师激活！所有弃置牌回收至牌堆！`);
+          // Recycle
+          const recycle = (pl: any) => ({
+              ...pl,
+              deck: shuffleDeck([...pl.deck, ...pl.discardPile]),
+              discardPile: []
+          });
+          setGameState(prev => prev ? ({
+              ...prev,
+              player1: recycle(prev.player1),
+              player2: recycle(prev.player2),
+              field: nextField 
+          }) : null);
+      } else {
+          setGameState(prev => prev ? ({ ...prev, field: nextField }) : null);
+      }
+  }
 
   for (const pid of executionOrder) {
      const curState = gameStateRef.current;
@@ -125,6 +149,10 @@ export const executeResolveEffects = async (
        // Swords Sun Quest Check
        if (card.name.includes('太阳')) {
             updateQuestProgress(effCtx, pid, 'quest-swords-sun', 1);
+       }
+       // Pentacles Moon Quest Check
+       if (card.marks.length > 0) {
+            updateQuestProgress(effCtx, pid, 'quest-pentacles-moon', 1);
        }
 
        // Check Invalidation
@@ -145,10 +173,64 @@ export const executeResolveEffects = async (
 
             // --- MARK TRIGGERS ---
 
+            // Pentacles Moon Mark: Discard 1 or Draw 1
+            if (card.marks.includes('mark-pentacles-moon')) {
+                addLog(`[星币·月亮] 标记触发！选择：弃置或抽牌。`);
+                setGameState(prev => ({
+                    ...prev!,
+                    interaction: {
+                        id: `pentacles-moon-choice-${Date.now()}`,
+                        playerId: pid,
+                        title: "【星币·月亮】标记",
+                        description: "选择一项效果:",
+                        options: [
+                            { 
+                                label: "抽一张牌", 
+                                action: () => {
+                                    drawCards(effCtx, pid, 1);
+                                    setGameState(s => s ? ({...s, interaction: null}) : null);
+                                }
+                            },
+                            { 
+                                label: "弃置一张牌", 
+                                action: () => {
+                                    setGameState(s => {
+                                        if(!s) return null;
+                                        const pp = s[pid===1?'player1':'player2'];
+                                        if(pp.hand.length === 0) {
+                                            s.logs.push("无手牌可弃置。");
+                                            return {...s, interaction: null};
+                                        }
+                                        return {
+                                            ...s,
+                                            interaction: {
+                                                id: `moon-discard-${Date.now()}`,
+                                                playerId: pid,
+                                                title: "【星币·月亮】弃置",
+                                                description: "选择一张牌弃置:",
+                                                inputType: 'CARD_SELECT',
+                                                cardsToSelect: pp.hand,
+                                                onCardSelect: (c) => {
+                                                    const discardCtx = createEffectContext(pid, c);
+                                                    discardCards(discardCtx, pid, [c.instanceId]);
+                                                    setGameState(curr => curr ? ({...curr, interaction: null}) : null);
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                        ]
+                    }
+                }));
+                const checkForInteraction = async () => { while (gameStateRef.current?.interaction) await delay(200); };
+                await checkForInteraction();
+            }
+
             // Wands Empress Mark: Trigger OnDraw
             if (card.marks.includes('mark-wands-empress')) {
                 if (card.onDraw) {
-                    addLog(`[权杖·女皇] 印记触发！执行 [${card.name}] 的抽到效果。`);
+                    addLog(`[权杖·女皇] 标记触发！执行 [${card.name}] 的抽到效果。`);
                     card.onDraw(effCtx);
                     const checkForInteraction = async () => { while (gameStateRef.current?.interaction) await delay(200); };
                     await checkForInteraction();
@@ -156,9 +238,16 @@ export const executeResolveEffects = async (
                 }
             }
             
+            // Swords Empress Mark: Prevent Healing
+            if (card.marks.includes('mark-swords-empress')) {
+                addLog(`[宝剑·女皇] 标记触发！对手本回合禁疗。`);
+                modifyPlayer(effCtx, getOpponentId(pid), pl => ({ ...pl, preventHealing: true }));
+                await delay(200);
+            }
+            
             // Pentacles Hierophant Mark: Draw 1
             if (card.marks.includes('mark-pentacles-hierophant')) {
-                 addLog(`[星币·教皇] 印记触发！抽一张牌。`);
+                 addLog(`[星币·教皇] 标记触发！抽一张牌。`);
                  drawCards(effCtx, pid, 1);
                  await delay(200);
             }

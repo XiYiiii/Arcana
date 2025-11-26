@@ -1,6 +1,10 @@
+
+
+
+
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
-import { modifyPlayer, addQuest } from '../../../services/actions';
-import { CARD_DEFINITIONS } from '../../cards';
+import { modifyPlayer, addQuest, giveCardReward } from '../../../services/actions';
+import { shuffleDeck } from '../../../services/gameUtils';
 
 export const SWORDS_WORLD: CardDefinition = {
     id: 'swords-world', name: '宝剑·世界', suit: CardSuit.SWORDS, rank: 321,
@@ -12,11 +16,11 @@ export const SWORDS_WORLD: CardDefinition = {
                 id: `swords-world-draw-${Date.now()}`,
                 playerId: ctx.sourcePlayerId,
                 title: "宝剑·世界",
-                description: "指定一张宝藏牌加入手牌：",
+                description: "指定一张宝藏牌加入己方宝库（牌堆）：",
                 options: [
-                    { label: "💎 宝剑", action: () => giveTreasure(ctx, 'treasure-swords') },
-                    { label: "💎 圣杯", action: () => giveTreasure(ctx, 'treasure-cups') },
-                    { label: "💎 权杖", action: () => giveTreasure(ctx, 'treasure-wands') }
+                    { label: "💎 宝剑", action: () => giveCardReward(ctx, ctx.sourcePlayerId, 'treasure-swords', true) },
+                    { label: "💎 圣杯", action: () => giveCardReward(ctx, ctx.sourcePlayerId, 'treasure-cups', true) },
+                    { label: "💎 权杖", action: () => giveCardReward(ctx, ctx.sourcePlayerId, 'treasure-wands', true) }
                 ]
             }
         }));
@@ -32,14 +36,4 @@ export const SWORDS_WORLD: CardDefinition = {
         addQuest(ctx, 1, q);
         addQuest(ctx, 2, q);
     }
-};
-
-const giveTreasure = (ctx: any, id: string) => {
-    const def = CARD_DEFINITIONS.find(c => c.id === id);
-    if (def) {
-        const card = { ...def, instanceId: `treasure-${Date.now()}`, marks: [], description: def.description || "" };
-        modifyPlayer(ctx, ctx.sourcePlayerId, p => ({ ...p, hand: [...p.hand, card] }));
-        ctx.log(`[宝剑·世界] 获取了 [${def.name}]！`);
-    }
-    ctx.setGameState((s:any) => s ? ({...s, interaction: null}) : null);
 };

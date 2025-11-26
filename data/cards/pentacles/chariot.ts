@@ -1,3 +1,5 @@
+
+
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { clash, modifyPlayer, shufflePlayerDeck } from '../../../services/actions';
 
@@ -10,13 +12,16 @@ export const PENTACLES_CHARIOT: CardDefinition = {
              const myId = c.sourcePlayerId;
              const oppId = c.sourcePlayerId === 1 ? 2 : 1;
              
-             // Logic: Equal -> Both Locked. Diff -> Winner's card Locked.
-             // Wait, "Winner's card locked"? "点数者所抽的牌被锁定" -> "The card drawn by the winner is locked".
-             // The prompt says: "Otherwise the card drawn by the winner is locked".
-             // If I Win, my card is locked? Yes.
+             // Logic: 
+             // Tie (Equal) -> Both Locked. 
+             // Else (Different) -> Smaller point value card (Loser's card) is Locked.
              
-             const lockMine = result === 'TIE' || result === 'WIN';
-             const lockOpp = result === 'TIE' || result === 'LOSE'; // Opp wins if I lose
+             // If I WIN, I have larger points. So my card is NOT locked.
+             // If I LOSE, I have smaller points. So my card IS locked.
+             // If I WIN, Opponent LOSES. Opponent card IS locked.
+             
+             const lockMine = result !== 'WIN'; // True if LOSE or TIE
+             const lockOpp = result !== 'LOSE'; // True if WIN (for me, so Opp Lost) or TIE
              
              modifyPlayer(c, myId, p => ({ ...p, hand: [...p.hand, { ...myCard, isLocked: lockMine }] }));
              modifyPlayer(c, oppId, p => ({ ...p, hand: [...p.hand, { ...oppCard, isLocked: lockOpp }] }));

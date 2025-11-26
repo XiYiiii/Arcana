@@ -1,3 +1,5 @@
+
+
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { addMarkToCard, modifyPlayer } from '../../../services/actions';
 
@@ -14,7 +16,7 @@ export const WANDS_EMPRESS: CardDefinition = {
                     id: `wands-empress-mark-${Date.now()}`,
                     playerId: ctx.sourcePlayerId,
                     title: "权杖·女皇",
-                    description: "选择一张手牌添加印记:",
+                    description: "选择一张手牌添加标记:",
                     inputType: 'CARD_SELECT',
                     cardsToSelect: prev[key].hand,
                     onCardSelect: (c) => {

@@ -10,6 +10,10 @@
 
 
 
+
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from './types';
 import { generateDeck, shuffleDeck } from './services/gameUtils';
@@ -100,8 +104,12 @@ export default function App() {
         fieldSlot: null, isFieldCardRevealed: false,
         immunityThisTurn: false, immunityNextTurn: false, effectDoubleNext: false,
         isReversed: false, isInvalidated: false, hpRecoverNextTurn: 0, invalidateNextPlayedCard: false, invalidateNextTurn: false,
+        preventTransform: 0,
         preventHealing: false, hasLifesteal: false, damageReflection: false, incomingDamageConversion: false, nextDamageDouble: false,
         swordsHangedManActive: false,
+        damageTakenThisTurn: 0,
+        piercingDamageThisTurn: false,
+        piercingDamageNextTurn: false,
         delayedEffects: [],
         maxHandSize: MAX_HAND_SIZE, skipDiscardThisTurn: false,
         quests: [],

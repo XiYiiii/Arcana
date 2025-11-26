@@ -8,12 +8,8 @@ export const SWORDS_HIEROPHANT: CardDefinition = {
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({
             ...p, hand: p.hand.map(c => addMarkToCard(c, 'mark-swords-hierophant'))
         }));
-        // Trigger mark effect for self? "When this card is played..."
-        // Since this card itself might not have the mark yet when played (unless marked previously),
-        // we check if it has mark. If it was just played, it triggered this effect.
-        // We need a generic Mark Trigger check.
-        // For now, let's just apply the mark to hand.
-        // AND check if *this* card has the mark (from previous Hierophant).
+        
+        // Check if this card itself was marked (from previous Hierophant)
         if(ctx.card.marks.includes('mark-swords-hierophant')) {
              const atk = ctx.gameState[ctx.sourcePlayerId===1?'player1':'player2'].atk;
              damagePlayer(ctx, getOpponentId(ctx.sourcePlayerId), atk);
@@ -32,10 +28,7 @@ export const SWORDS_HIEROPHANT: CardDefinition = {
             }
             return { ...p, hand: p.hand.map((c, i) => chosen.includes(i) ? addMarkToCard(c, 'mark-swords-hierophant') : c) };
         });
-
-        if(ctx.card.marks.includes('mark-swords-hierophant')) {
-             const atk = ctx.gameState[ctx.sourcePlayerId===1?'player1':'player2'].atk;
-             damagePlayer(ctx, ctx.sourcePlayerId, atk);
-        }
+        
+        // Self-damage logic for the Hierophant card itself if marked is now handled globally in discardCards.
     }
 };

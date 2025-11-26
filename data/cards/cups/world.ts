@@ -1,3 +1,5 @@
+
+
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { modifyPlayer, getOpponentId } from '../../../services/actions';
 
@@ -6,7 +8,7 @@ export const CUPS_WORLD: CardDefinition = {
     keywords: [Keyword.REVERSE],
     onReveal: (ctx) => {
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({
-             ...p, fieldSlot: null, deck: [...p.deck, ctx.card]
+             ...p, fieldSlot: null, deck: [...p.deck, ctx.card] // Put at bottom
         }));
     },
     canInstant: (w) => w === InstantWindow.AFTER_REVEAL,

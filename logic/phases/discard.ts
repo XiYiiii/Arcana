@@ -2,6 +2,8 @@
 
 
 
+
+
 import { GamePhase, InstantWindow, PlayerState } from '../../types';
 
 export const executeDiscardPhase = (
@@ -46,6 +48,30 @@ export const executeDiscardPhase = (
 
     const p1Processed = processEndPhase(prev.player1, prev.player2);
     const p2Processed = processEndPhase(prev.player2, prev.player1);
+
+    // --- PENTACLES JUDGMENT FIELD LOGIC ---
+    let judgmentDmgToP1 = 0;
+    let judgmentDmgToP2 = 0;
+    const field = prev.field;
+    if (field && field.active && field.card.name.includes('星币·审判')) {
+         const p1Taken = prev.player1.damageTakenThisTurn;
+         const p2Taken = prev.player2.damageTakenThisTurn;
+         
+         if (p1Taken > p2Taken) {
+             // P1 took more damage, takes P2's Atk as damage
+             judgmentDmgToP1 = prev.player2.atk;
+         } else if (p2Taken > p1Taken) {
+             // P2 took more damage, takes P1's Atk as damage
+             judgmentDmgToP2 = prev.player1.atk;
+         }
+    }
+    // Apply judgment damage immediately to local state before cleanup
+    if (judgmentDmgToP1 > 0) p1Processed.hp -= judgmentDmgToP1;
+    if (judgmentDmgToP2 > 0) p2Processed.hp -= judgmentDmgToP2;
+
+    const extraLogs = [];
+    if (judgmentDmgToP1 > 0) extraLogs.push(`[场地] 星币·审判：P1 承受额外伤害 ${judgmentDmgToP1} 点！`);
+    if (judgmentDmgToP2 > 0) extraLogs.push(`[场地] 星币·审判：P2 承受额外伤害 ${judgmentDmgToP2} 点！`);
 
     const cleanup = (p: PlayerState) => {
       const field = p.fieldSlot;
@@ -114,6 +140,11 @@ export const executeDiscardPhase = (
           damageReflection: false,
           incomingDamageConversion: false,
           swordsHangedManActive: false,
+          
+          // Reset damage trackers
+          damageTakenThisTurn: 0,
+          piercingDamageThisTurn: p.piercingDamageNextTurn, // Carry over next turn setting
+          piercingDamageNextTurn: false,
         },
         drawAmount: extraDraw
       };
@@ -148,7 +179,7 @@ export const executeDiscardPhase = (
 
     if (p1FinalState.hp < 0 || p2FinalState.hp < 0) {
        let msg = p1FinalState.hp < 0 && p2FinalState.hp < 0 ? "双方平局！" : p1FinalState.hp < 0 ? "玩家 2 获胜！" : "玩家 1 获胜！";
-       return { ...prev, phase: GamePhase.GAME_OVER, logs: [msg, ...prev.logs], player1: p1FinalState, player2: p2FinalState };
+       return { ...prev, phase: GamePhase.GAME_OVER, logs: [msg, ...prev.logs, ...extraLogs], player1: p1FinalState, player2: p2FinalState };
     }
     
     return {
@@ -158,7 +189,7 @@ export const executeDiscardPhase = (
       turnCount: prev.turnCount + 1,
       player1: p1FinalState,
       player2: p2FinalState,
-      logs: [`--- 第 ${prev.turnCount + 1} 回合开始 ---`, ...prev.logs]
+      logs: [`--- 第 ${prev.turnCount + 1} 回合开始 ---`, ...extraLogs, ...prev.logs]
     };
   });
 };
