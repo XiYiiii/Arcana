@@ -40,3 +40,15 @@ export const shuffleDeck = (deck: Card[]): Card[] => {
   }
   return newDeck;
 };
+
+const ARCANA_NAMES = [
+  '愚者', '魔术师', '女祭司', '女皇', '皇帝', '教皇', '恋人', '战车', '力量', '隐者',
+  '命运之轮', '正义', '倒吊人', '死神', '节制', '恶魔', '高塔', '星星', '月亮', '太阳',
+  '审判', '世界'
+];
+
+export const getArcanaNumber = (card: Card): number => {
+  // Find which arcana name is in the card name
+  const index = ARCANA_NAMES.findIndex(name => card.name.includes(name));
+  return index !== -1 ? index : -1;
+};

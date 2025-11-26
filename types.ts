@@ -120,6 +120,14 @@ export interface Quest {
   target: number;
 }
 
+export interface VisualEvent {
+  id: string;
+  type: 'FLY_CARD' | 'TRANSFORM_CARD';
+  fromPid?: number;
+  toPid?: number;
+  cardName?: string; // For visual context
+}
+
 export interface PlayerState {
   id: number;
   name: string;
@@ -191,4 +199,5 @@ export interface GameState {
   pendingEffects: PendingEffect[];
   activeEffect: PendingEffect | null; // For Visual Overlay
   interaction: InteractionRequest | null; // For User Choices (Star, etc)
+  visualEvents: VisualEvent[]; // Queue for one-shot animations
 }

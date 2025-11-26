@@ -1,6 +1,7 @@
 
-import { EffectContext, PlayerState, GameState, Card, CardSuit, Quest, CardDefinition } from '../types';
-import { shuffleDeck } from './gameUtils';
+
+import { EffectContext, PlayerState, GameState, Card, CardSuit, Quest, CardDefinition, VisualEvent } from '../types';
+import { shuffleDeck, getArcanaNumber } from './gameUtils';
 import { CARD_DEFINITIONS } from '../data/cards';
 
 // --- Helper for State Mutation ---
@@ -278,11 +279,22 @@ export const transformCard = (ctx: EffectContext, targetPlayerId: number, cardIn
 
         const newHand = p.hand.map(c => c.instanceId === cardInstanceId ? newCard : c);
         const newFieldSlot = isField ? newCard : p.fieldSlot;
+        
+        // Also check Deck (for Hermit)
+        const newDeck = p.deck.map(c => c.instanceId === cardInstanceId ? newCard : c);
+
+        const visualEvent: VisualEvent = {
+            id: `transform-${Date.now()}`,
+            type: 'TRANSFORM_CARD',
+            fromPid: targetPlayerId, // Using fromPid to indicate location of transform
+            cardName: newCard.name
+        };
 
         return {
             ...prev,
-            [key]: { ...p, hand: newHand, fieldSlot: newFieldSlot },
-            field: newField
+            [key]: { ...p, hand: newHand, fieldSlot: newFieldSlot, deck: newDeck },
+            field: newField,
+            visualEvents: [...prev.visualEvents, visualEvent]
         };
     });
 };
@@ -411,6 +423,12 @@ export const putCardInDeck = (ctx: EffectContext, targetId: number, card: Card, 
         const key = finalTargetId === 1 ? 'player1' : 'player2';
         const p = prev[key];
         
+        // Treasure safety
+        if (card.isTreasure) {
+            ctx.log(`[归库] 宝藏牌 [${card.name}] 回到了宝库。`);
+            return prev;
+        }
+
         let newDeck = [...p.deck, card];
         if (shuffle) {
             newDeck = shuffleDeck(newDeck);
@@ -478,10 +496,19 @@ export const seizeCard = (ctx: EffectContext, cardInstanceId: string) => {
 
         ctx.log(`[夺取] 从 ${prev[ownerKey].name} 处夺取了 [${c.name}]！`);
 
+        const visualEvent: VisualEvent = {
+            id: `seize-${Date.now()}`,
+            type: 'FLY_CARD',
+            fromPid: ownerId,
+            toPid: targetId,
+            cardName: c.name
+        };
+
         return {
             ...prev,
             [ownerKey]: { ...prev[ownerKey], hand: newOwnerHand, fieldSlot: newOwnerField },
-            [targetKey]: { ...prev[targetKey], hand: [...prev[targetKey].hand, c] }
+            [targetKey]: { ...prev[targetKey], hand: [...prev[targetKey].hand, c] },
+            visualEvents: [...prev.visualEvents, visualEvent]
         };
     });
 };
@@ -509,6 +536,8 @@ export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: str
             ctx.log(`[盲夺] 目标手牌不足或被保护，只夺取了 ${actualCount} 张。`);
         }
 
+        const newVisualEvents = [...prev.visualEvents];
+
         for(let i=0; i<actualCount; i++) {
             if(oppHandVulnerable.length === 0) break;
             const randIdx = Math.floor(Math.random() * oppHandVulnerable.length);
@@ -529,6 +558,14 @@ export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: str
             
             myHand.push(seized);
             ctx.log(`[盲夺] 随机夺取了对手的 [${seized.name}]！`);
+            
+            newVisualEvents.push({
+                id: `blind-seize-${Date.now()}-${i}`,
+                type: 'FLY_CARD',
+                fromPid: oppId,
+                toPid: ctx.sourcePlayerId,
+                cardName: '???'
+            });
         }
         
         // Recombine opponent hand
@@ -537,7 +574,8 @@ export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: str
         return {
             ...prev,
             [oppKey]: { ...prev[oppKey], hand: newOppHand, discardPile: oppDiscard },
-            [myKey]: { ...prev[myKey], hand: myHand }
+            [myKey]: { ...prev[myKey], hand: myHand },
+            visualEvents: newVisualEvents
         };
     });
 };
@@ -569,16 +607,35 @@ export const destroyCard = (ctx: EffectContext, cardInstanceId: string) => {
         const key = ctx.sourcePlayerId === 1 ? 'player1' : 'player2';
         const p = prev[key];
         
+        // Check immunity
+        let target = p.hand.find(c => c.instanceId === cardInstanceId) 
+                     || p.deck.find(c => c.instanceId === cardInstanceId)
+                     || p.discardPile.find(c => c.instanceId === cardInstanceId)
+                     || (p.fieldSlot?.instanceId === cardInstanceId ? p.fieldSlot : undefined);
+        
+        if (target && target.isTreasure) {
+             ctx.log(`[销毁免疫] 宝藏牌 [${target.name}] 无法被销毁。`);
+             return prev;
+        }
+
         const hand = p.hand.filter(c => c.instanceId !== cardInstanceId);
         const deck = p.deck.filter(c => c.instanceId !== cardInstanceId);
         const discardPile = p.discardPile.filter(c => c.instanceId !== cardInstanceId);
         const fieldSlot = p.fieldSlot?.instanceId === cardInstanceId ? null : p.fieldSlot;
         
-        ctx.log(`[销毁] 一张卡牌被移出游戏。`);
+        ctx.log(`[销毁] 一张卡牌 [${target?.name || '未知'}] 被移出游戏。`);
         
+        const visualEvent: VisualEvent = {
+            id: `destroy-${Date.now()}`,
+            type: 'TRANSFORM_CARD', // Re-using transform effect for destruction puff
+            fromPid: ctx.sourcePlayerId,
+            cardName: target?.name
+        };
+
         return {
             ...prev,
-            [key]: { ...p, hand, deck, discardPile, fieldSlot }
+            [key]: { ...p, hand, deck, discardPile, fieldSlot },
+            visualEvents: [...prev.visualEvents, visualEvent]
         };
     });
 };
@@ -632,6 +689,11 @@ export const discardField = (ctx: EffectContext) => {
         const key = ownerId === 1 ? 'player1' : 'player2';
         
         ctx.log(`[场地] ${card.name} 被弃置/覆盖。`);
+        
+        if (card.isTreasure) {
+             ctx.log(`[归库] 宝藏场地 [${card.name}] 回到了宝库。`);
+             return { ...prev, field: null };
+        }
 
         // Revert Buffs if specific cards
         let p = prev[key];
@@ -697,17 +759,23 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
         const idsToDiscard = cardInstanceIds.filter(id => {
              const c = p.hand.find(x => x.instanceId === id);
              if (c && c.isTreasure) {
-                 ctx.log(`[规则] 宝藏牌 [${c.name}] 无法被弃置！`);
+                 ctx.log(`[归库] 宝藏牌 [${c.name}] 回到了宝库！`);
                  return false;
              }
              return true;
         });
 
+        const treasuresToRemove = cardInstanceIds.filter(id => {
+             const c = p.hand.find(x => x.instanceId === id);
+             return c && c.isTreasure;
+        });
+
         const newPending = [...prev.pendingEffects];
         const newHand = p.hand.filter(c => {
+            if(treasuresToRemove.includes(c.instanceId)) return false; // Remove treasure from hand (to vault)
             if(idsToDiscard.includes(c.instanceId)) {
                 if(c.onDiscard) newPending.push({ type: 'ON_DISCARD', card: c, playerId: finalTargetId, description: "弃置触发！" });
-                return false;
+                return false; // Move to discard pile logic
             }
             return true;
         });
@@ -753,7 +821,7 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
                     const discardHand = (pl: PlayerState) => ({
                         ...pl,
                         hand: [],
-                        discardPile: [...pl.discardPile, ...pl.hand]
+                        discardPile: [...pl.discardPile, ...pl.hand.filter(c => !c.isTreasure)]
                     });
                     
                     nextState = {
@@ -763,10 +831,14 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
                         // Explicitly discard the field here manually in state (simpler than calling action recursively)
                         field: null
                     };
-                    // Add field card to owner's discard
+                    // Add field card to owner's discard (if not treasure)
                     const fieldOwnerKey = prev.field.ownerId === 1 ? 'player1' : 'player2';
                     const fieldCard = prev.field.card;
-                    nextState[fieldOwnerKey].discardPile.push(fieldCard);
+                    if(!fieldCard.isTreasure) {
+                        nextState[fieldOwnerKey].discardPile.push(fieldCard);
+                    } else {
+                        ctx.log(`[归库] 宝藏场地 [${fieldCard.name}] 回到了宝库。`);
+                    }
                 } else {
                     nextState.field = { ...nextState.field, counter: newCounter };
                 }
@@ -780,8 +852,24 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
 export const checkGameOver = (ctx: EffectContext) => {
     ctx.setGameState(prev => {
         if(!prev) return null;
-        if(prev.player1.hp <= 0 || prev.player2.hp <= 0) {
-            let msg = prev.player1.hp <= 0 && prev.player2.hp <= 0 ? "双方平局！" : prev.player1.hp <= 0 ? "玩家 2 获胜！" : "玩家 1 获胜！";
+
+        // Pentacles Wheel Field Override
+        let p1Win = prev.player2.hp <= 0;
+        let p2Win = prev.player1.hp <= 0;
+
+        if (prev.field && prev.field.active && prev.field.card.name.includes('星币·命运之轮')) {
+            const owner = prev.field.ownerId;
+            if (owner === 1) {
+                // P1 Victory if P1 HP <= 0
+                if (prev.player1.hp <= 0) p1Win = true;
+            } else {
+                // P2 Victory if P2 HP <= 0
+                if (prev.player2.hp <= 0) p2Win = true;
+            }
+        }
+
+        if(p1Win || p2Win) {
+            let msg = p1Win && p2Win ? "双方平局！" : p1Win ? "玩家 1 获胜！" : "玩家 2 获胜！";
             return { ...prev, phase: 'GAME_OVER' as any, logs: [msg, ...prev.logs] };
         }
         return prev;
@@ -1031,4 +1119,82 @@ const giveCardReward = (ctx: EffectContext, playerId: number, identifier: string
         console.warn(`Card reward not found: ${identifier}`);
         ctx.setGameState((s:any) => s ? ({...s, interaction: null}) : null);
     }
+};
+
+export const clash = (ctx: EffectContext, onResolve: (ctx: EffectContext, result: 'WIN' | 'LOSE' | 'TIE', myCard: Card, oppCard: Card) => void) => {
+    // 1. Peek top cards (Remove from deck)
+    let p1Card: Card | null = null;
+    let p2Card: Card | null = null;
+    
+    ctx.setGameState(prev => {
+        if(!prev) return null;
+        const p1 = prev.player1;
+        const p2 = prev.player2;
+        if(p1.deck.length === 0 || p2.deck.length === 0) {
+            ctx.log("拼点失败：牌堆不足。");
+            return prev;
+        }
+        p1Card = p1.deck[0];
+        p2Card = p2.deck[0];
+        
+        return {
+            ...prev,
+            player1: { ...p1, deck: p1.deck.slice(1) },
+            player2: { ...p2, deck: p2.deck.slice(1) }
+        };
+    });
+
+    // 2. Resolve logic next tick to ensure state updated
+    setTimeout(() => {
+        if(!p1Card || !p2Card) return;
+        
+        const n1 = getArcanaNumber(p1Card);
+        const n2 = getArcanaNumber(p2Card);
+        
+        ctx.log(`拼点: P1[${p1Card.name}(${n1})] vs P2[${p2Card.name}(${n2})]`);
+        
+        let p1Res: 'WIN' | 'LOSE' | 'TIE' = 'TIE';
+        if (n1 > n2) p1Res = 'WIN';
+        else if (n1 < n2) p1Res = 'LOSE';
+        
+        const p2Res = p1Res === 'WIN' ? 'LOSE' : p1Res === 'LOSE' ? 'WIN' : 'TIE';
+
+        // Helper to finalize card destination
+        const finalize = (pid: number, c: Card, dest: 'HAND' | 'DISCARD' | 'LOCK_HAND', logSuffix: string) => {
+             const key = pid === 1 ? 'player1' : 'player2';
+             const isLock = dest === 'LOCK_HAND';
+             const isHand = dest === 'HAND' || isLock;
+             
+             modifyPlayer(ctx, pid, p => ({
+                 ...p,
+                 hand: isHand ? [...p.hand, { ...c, isLocked: isLock ? true : c.isLocked }] : p.hand,
+                 discardPile: dest === 'DISCARD' ? [...p.discardPile, c] : p.discardPile
+             }));
+
+             if (isHand) {
+                 if (c.onDraw) {
+                     // Trigger OnDraw manually since we bypassed drawCards
+                     const subCtx = { ...ctx, sourcePlayerId: pid, card: c }; // Hack context
+                     // We can't easily push to pendingEffects inside modifyPlayer without complex piping
+                     // So we queue it or execute immediately? Execute immediately is risky for recursion.
+                     // But PendingEffects is safe.
+                     ctx.setGameState(s => s ? ({...s, pendingEffects: [...s.pendingEffects, { type: 'ON_DRAW', card: c, playerId: pid }]}) : null);
+                 }
+             } else {
+                 if (c.onDiscard) {
+                     ctx.setGameState(s => s ? ({...s, pendingEffects: [...s.pendingEffects, { type: 'ON_DISCARD', card: c, playerId: pid }]}) : null);
+                 }
+             }
+        };
+
+        // Call callback to let specific card decide logic
+        // We pass the raw cards, callback calls finalize
+        const myId = ctx.sourcePlayerId;
+        const myCard = myId === 1 ? p1Card : p2Card;
+        const oppCard = myId === 1 ? p2Card : p1Card;
+        const myResult = myId === 1 ? p1Res : p2Res;
+        
+        onResolve(ctx, myResult, myCard, oppCard);
+        
+    }, 200);
 };

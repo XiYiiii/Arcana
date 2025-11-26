@@ -100,6 +100,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
    const isDiscardPhase = phase === GamePhase.DISCARD;
    const allowInteraction = phase === GamePhase.SET || instantWindow !== InstantWindow.NONE || (phase === GamePhase.DISCARD && mustDiscard);
    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+   const [hoveredQuestId, setHoveredQuestId] = useState<string | null>(null);
 
    return (
       <div className={`flex-1 flex flex-col w-full ${isOpponent ? 'pt-4' : 'pb-6'} relative transition-all duration-500 z-30`}>
@@ -146,13 +147,27 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
              {player.quests.length > 0 && (
                  <>
                      <div className="w-px h-6 bg-stone-700/50 mx-1"></div>
-                     <div className="flex gap-2">
+                     <div className="flex gap-2 pointer-events-auto">
                          {player.quests.map(q => (
-                             <div key={q.id} className="flex flex-col items-center bg-stone-800 px-1.5 py-0.5 rounded border border-yellow-700/40 relative" title={q.description}>
+                             <div 
+                                key={q.id} 
+                                className="flex flex-col items-center bg-stone-800 px-1.5 py-0.5 rounded border border-yellow-700/40 relative group cursor-help"
+                                onMouseEnter={() => setHoveredQuestId(q.id)}
+                                onMouseLeave={() => setHoveredQuestId(null)}
+                             >
                                  <span className="text-[8px] text-yellow-500 font-bold leading-none mb-0.5 max-w-[50px] truncate">{q.name}</span>
                                  <div className="w-full h-1 bg-stone-700 rounded-full overflow-hidden">
                                      <div className="h-full bg-yellow-500 transition-all duration-500" style={{ width: `${(q.progress / q.target) * 100}%` }}></div>
                                  </div>
+                                 
+                                 {/* Quest Tooltip */}
+                                 {hoveredQuestId === q.id && (
+                                     <div className={`absolute left-1/2 -translate-x-1/2 ${isOpponent ? 'top-full mt-2' : 'bottom-full mb-2'} w-40 bg-stone-900/95 p-2 rounded border border-yellow-700/50 shadow-xl z-50 text-left`}>
+                                         <div className="text-[10px] font-bold text-yellow-500 mb-1">{q.name}</div>
+                                         <div className="text-[9px] text-stone-300 mb-1">{q.description}</div>
+                                         <div className="text-[8px] text-stone-500 font-mono">进度: {q.progress} / {q.target}</div>
+                                     </div>
+                                 )}
                              </div>
                          ))}
                      </div>

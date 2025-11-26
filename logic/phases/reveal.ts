@@ -63,8 +63,17 @@ export const executeResolveEffects = async (
   
   const applyRuleDamage = (c: EffectContext, pid: number) => {
     const p = pid === 1 ? c.gameState.player1 : c.gameState.player2;
-    const opp = pid === 1 ? c.gameState.player2 : c.gameState.player1;
-    const dmg = opp.atk;
+    const opp = pid === 1 ? c.gameState.player2 : c.gameState.player1; // The one dealing damage
+    
+    // Check Wands Chariot Passive
+    const isWandsChariot = opp.fieldSlot?.name.includes('权杖·战车');
+    let dmg = opp.atk;
+    
+    if (isWandsChariot) {
+        dmg = Math.floor(dmg * 1.5);
+        addLog(`[权杖·战车] 冲撞！伤害倍率生效 (${opp.atk} -> ${dmg})`);
+    }
+
     if (p.immunityThisTurn) addLog(`${p.name} 免疫了规则伤害。`);
     else damagePlayer(c, pid, dmg);
   };
@@ -124,71 +133,97 @@ export const executeResolveEffects = async (
            // Consume flag
            modifyPlayer(effCtx, pid, pl => ({ ...pl, invalidateNextPlayedCard: false }));
            await delay(DELAY_MS);
-           continue; 
-       }
-       // Consume flag if it wasn't triggered
-       if (p.invalidateNextPlayedCard) {
-            modifyPlayer(effCtx, pid, pl => ({ ...pl, invalidateNextPlayedCard: false }));
-       }
+       } else {
+            // Consume flag if it wasn't triggered but existed
+            if (p.invalidateNextPlayedCard) {
+                modifyPlayer(effCtx, pid, pl => ({ ...pl, invalidateNextPlayedCard: false }));
+            }
 
-       if (p.isReversed && !card.isTreasure) {
-           addLog(`[反转] ${p.name} 的 [${card.name}] 效果将反转！`);
-       }
+            if (p.isReversed && !card.isTreasure) {
+                addLog(`[反转] ${p.name} 的 [${card.name}] 效果将反转！`);
+            }
 
-       // --- MARK TRIGGERS ---
+            // --- MARK TRIGGERS ---
 
-       // Wands Empress Mark: Trigger OnDraw
-       if (card.marks.includes('mark-wands-empress')) {
-           if (card.onDraw) {
-               addLog(`[权杖·女皇] 印记触发！执行 [${card.name}] 的抽到效果。`);
-               card.onDraw(effCtx);
-               const checkForInteraction = async () => { while (gameStateRef.current?.interaction) await delay(200); };
-               await checkForInteraction();
-               await delay(DELAY_MS/2);
-           }
-       }
+            // Wands Empress Mark: Trigger OnDraw
+            if (card.marks.includes('mark-wands-empress')) {
+                if (card.onDraw) {
+                    addLog(`[权杖·女皇] 印记触发！执行 [${card.name}] 的抽到效果。`);
+                    card.onDraw(effCtx);
+                    const checkForInteraction = async () => { while (gameStateRef.current?.interaction) await delay(200); };
+                    await checkForInteraction();
+                    await delay(DELAY_MS/2);
+                }
+            }
+            
+            // Pentacles Hierophant Mark: Draw 1
+            if (card.marks.includes('mark-pentacles-hierophant')) {
+                 addLog(`[星币·教皇] 印记触发！抽一张牌。`);
+                 drawCards(effCtx, pid, 1);
+                 await delay(200);
+            }
 
-       // Swords Hanged Man (Recover 2HP on play)
-       if (card.marks.includes('mark-swords-hangedman')) {
-          addLog(`[倒吊人] 标记触发！${p.name} 恢复 2 点生命。`);
-          modifyPlayer(effCtx, pid, pl => ({ ...pl, hp: pl.hp + 2 }));
-          await delay(200);
-       }
-       // Swords Devil (Extra 1 Dmg to opp)
-       if (card.marks.includes('mark-swords-devil')) {
-           addLog(`[宝剑·恶魔] 标记触发！额外造成1点伤害。`);
-           damagePlayer(effCtx, getOpponentId(pid), 1);
-           await delay(200);
-       }
-       // Swords Tower (Self 1 Dmg)
-       if (card.marks.includes('mark-swords-tower')) {
-           addLog(`[宝剑·高塔] 标记触发！自伤1点。`);
-           damagePlayer(effCtx, pid, 1);
-           await delay(200);
-       }
-       
-       if (card.onReveal) {
-          const isDouble = p.effectDoubleNext || card.marks.includes('mark-cups-magician');
-          const times = isDouble ? 2 : 1;
-          if (card.marks.includes('mark-cups-magician')) addLog(`[魔术师] 标记触发！效果发动两次。`);
+            // Swords Hanged Man (Recover 2HP on play)
+            if (card.marks.includes('mark-swords-hangedman')) {
+                addLog(`[倒吊人] 标记触发！${p.name} 恢复 2 点生命。`);
+                modifyPlayer(effCtx, pid, pl => ({ ...pl, hp: pl.hp + 2 }));
+                await delay(200);
+            }
+            // Swords Devil (Extra 1 Dmg to opp)
+            if (card.marks.includes('mark-swords-devil')) {
+                addLog(`[宝剑·恶魔] 标记触发！额外造成1点伤害。`);
+                damagePlayer(effCtx, getOpponentId(pid), 1);
+                await delay(200);
+            }
+            // Swords Tower (Self 1 Dmg)
+            if (card.marks.includes('mark-swords-tower')) {
+                addLog(`[宝剑·高塔] 标记触发！自伤1点。`);
+                damagePlayer(effCtx, pid, 1);
+                await delay(200);
+            }
+            
+            if (card.onReveal) {
+                const isDouble = p.effectDoubleNext || card.marks.includes('mark-cups-magician');
+                const times = isDouble ? 2 : 1;
+                if (card.marks.includes('mark-cups-magician')) addLog(`[魔术师] 标记触发！效果发动两次。`);
 
-          for(let i=0; i<times; i++) {
-             await triggerVisualEffect('ON_REVEAL', card, pid, `${p.name} 发动 [${card.name}]`);
-             card.onReveal(effCtx);
-             const checkForInteraction = async () => { while (gameStateRef.current?.interaction) await delay(200); };
-             await checkForInteraction();
-             await delay(DELAY_MS);
-          }
-          if (p.effectDoubleNext) modifyPlayer(effCtx, pid, pl => ({ ...pl, effectDoubleNext: false }));
-       }
+                for(let i=0; i<times; i++) {
+                    await triggerVisualEffect('ON_REVEAL', card, pid, `${p.name} 发动 [${card.name}]`);
+                    card.onReveal(effCtx);
+                    const checkForInteraction = async () => { while (gameStateRef.current?.interaction) await delay(200); };
+                    await checkForInteraction();
+                    await delay(DELAY_MS);
+                }
+                if (p.effectDoubleNext) modifyPlayer(effCtx, pid, pl => ({ ...pl, effectDoubleNext: false }));
+            }
 
-       if (card.marks.includes('mark-death') || card.keywords?.includes(Keyword.DESTROY)) {
-           if(card.name.includes('死神') || card.name.includes('世界')) {
-               destroyCard(effCtx, card.instanceId);
-           }
+            if (card.marks.includes('mark-death') || card.keywords?.includes(Keyword.DESTROY)) {
+                if(card.name.includes('死神') || card.name.includes('世界')) {
+                    destroyCard(effCtx, card.instanceId);
+                }
+            }
+
+            // --- AFTER EFFECT WINDOW ---
+            setGameState(prev => prev ? ({ ...prev, instantWindow: InstantWindow.AFTER_EFFECT }) : null);
+            await delay(600); 
+            setGameState(prev => prev ? ({ ...prev, instantWindow: InstantWindow.NONE }) : null);
        }
      }
   }
+
+  // --- TREASURE CLEANUP & DISCARD ---
+  const handleDiscardField = (pid: number) => {
+      const p = pid === 1 ? gameStateRef.current?.player1 : gameStateRef.current?.player2;
+      const card = p?.fieldSlot;
+      if (card) {
+          if (card.isTreasure) {
+              addLog(`[归库] 宝藏牌 [${card.name}] 回到了宝库。`);
+              modifyPlayer(createEffectContext(pid, card), pid, pl => ({ ...pl, fieldSlot: null }));
+          }
+      }
+  };
+  handleDiscardField(1);
+  handleDiscardField(2);
 
   setGameState(prev => prev ? ({ 
     ...prev, 

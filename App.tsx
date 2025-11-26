@@ -4,6 +4,8 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from './types';
 import { generateDeck, shuffleDeck } from './services/gameUtils';
@@ -15,6 +17,7 @@ import { PhaseBar } from './components/PhaseBar';
 import { PlayerArea } from './components/PlayerArea';
 import { FieldArea } from './components/FieldArea';
 import { InteractionOverlay, EffectOverlay, GameOverOverlay, DebugOverlay, GalleryOverlay, DiscardOverlay } from './components/overlays';
+import { VisualEffectsLayer } from './components/VisualEffectsLayer';
 import { StartScreen } from './components/screens/StartScreen';
 import { GameSetupScreen } from './components/screens/GameSetupScreen';
 
@@ -110,7 +113,8 @@ export default function App() {
         isResolving: false,
         pendingEffects: [],
         activeEffect: null,
-        interaction: null
+        interaction: null,
+        visualEvents: []
       });
       setAppMode('GAME');
   };
@@ -120,6 +124,17 @@ export default function App() {
       setInitialHp(settings.hp);
       setInitialHandSize(settings.handSize);
       setAppMode('MENU');
+  };
+
+  // --- Visual Events Cleanup ---
+  const handleVisualEventComplete = (id: string) => {
+      setGameState(prev => {
+          if (!prev) return null;
+          return {
+              ...prev,
+              visualEvents: prev.visualEvents.filter(e => e.id !== id)
+          };
+      });
   };
 
   // --- Rule: Empty Hand Check (Or All Locked) ---
@@ -172,109 +187,7 @@ export default function App() {
   // --- Rule: Lock Logic & Field Interactions ---
   useEffect(() => {
       if (appMode !== 'GAME' || !gameState) return;
-
-      const isSwordsStarActive = gameState.field?.active && gameState.field.card.name.includes('宝剑·星星');
-
-      const updateLocks = (p: PlayerState) => {
-          const lovers = p.hand.filter(c => c.marks.includes('mark-lovers') || c.marks.includes('mark-swords-lovers'));
-          const justice = p.hand.find(c => c.marks.includes('mark-justice'));
-          const wandsJustice = p.hand.find(c => c.marks.includes('mark-wands-justice'));
-          const sun = p.hand.find(c => c.marks.includes('mark-sun'));
-          
-          const swordsLoversCount = p.hand.filter(c => c.marks.includes('mark-swords-lovers')).length;
-          const hasWandsLoversPair = p.hand.filter(c => c.marks.includes('mark-lovers')).length >= 2;
-          const hasJustice = !!justice;
-          const hasWandsJustice = !!wandsJustice;
-          
-          return p.hand.map(c => {
-              // Note: If card.isLocked is set by "LOCK" keyword effect (status), we preserve it.
-              // We only recalculate conditional locks here.
-              // However, conditional locks shouldn't overwrite effect locks if effect lock is true.
-              // But conditional locks might be temporary.
-              
-              // We'll treat `c.isLocked` as the source of truth for "Keyword Lock", 
-              // but we need to OR it with "Conditional Lock".
-              // Since Card state is persistent in state, we shouldn't overwrite `isLocked` if it was set by an action.
-              // Wait, `updateLocks` runs every render/effect. If we set `isLocked = true` here, it persists?
-              // `isLocked` in state is the "Status Lock".
-              // Conditional locks need to be dynamic. 
-              // To distinguish, we might need separate flags, but for now, 
-              // we can assume `c.isLocked` from state is the "until next turn" lock.
-              // And here we verify conditions.
-              
-              if (c.isTreasure) return c; // Treasure ignores locks usually? Prompt says Treasure "Immune to ... Lock"
-              
-              let conditionalLock = false;
-
-              // Swords Star Logic: Negate Sun's passive/locks
-              if (!isSwordsStarActive && c.name.includes('太阳')) {
-                   // Sun is normally locked (Passive), unless Swords Star active.
-                   // Wait, Sun's passive says "Cannot be played directly".
-                   // We treat this as a lock? Or just `canSet: false` in definition?
-                   // Definition has `canSet: false`.
-                   // But here we are manipulating `isLocked` property.
-                   // Let's stick to `isLocked` for "Card Effect Locks".
-              }
-              
-              // Rule specific logic
-              if (hasWandsLoversPair && c.marks.includes('mark-lovers')) conditionalLock = true;
-              if (c.marks.includes('mark-swords-lovers') && swordsLoversCount >= 2) conditionalLock = true;
-              
-              if (hasJustice && !c.marks.includes('mark-justice')) conditionalLock = true;
-              if (hasWandsJustice && !c.marks.includes('mark-wands-justice')) conditionalLock = true;
-              if (c.marks.includes('mark-sun')) conditionalLock = true;
-
-              // Combined Lock State: Explicit Lock (from Actions) OR Conditional Lock
-              // We cannot easily modify "only conditional" without knowing previous state.
-              // But since `isLocked` is a property on the card object in state...
-              // If we change it here, it commits to state.
-              // The problem: If we set it to true due to condition, then condition is removed, how do we revert?
-              // We should probably NOT calculate this into state every time, but `canSet` logic in Render uses `isLocked`.
-              // A better way is to calculate "effectiveLock" in render, but `isLocked` is part of the Card type.
-              // Let's rely on the fact that `updateLocks` recalculates everything.
-              // But we need to preserve the "Effect Lock" (Keyword Lock).
-              // Let's assume the `isLocked` property in `player.hand` *is* the Effect Lock.
-              // And we compute a derived property? No, types.ts `Card` has `isLocked`.
-              
-              // Correct approach for this architecture:
-              // The `isLocked` on the card in `player.hand` represents the PERSISTENT lock (until next turn).
-              // The CONDITIONAL lock is calculated on the fly in `App.tsx`'s `canSet` check variable?
-              // OR we add a `conditionalLocked` property?
-              // The prompt says "Lock" keyword.
-              // Let's leave `c.isLocked` for the Keyword Lock.
-              // And Conditional Logic in the `canSet` check below.
-              
-              // Wait, the code below uses:
-              // const updateLocks = ... return p.hand.map ...
-              // This actually modifies the state `hand`.
-              // So if I map it, I am replacing the hand.
-              // I must preserve `isLocked` if it was set by action.
-              
-              // We will just return c unmodified here for now regarding 'isLocked', 
-              // because the previous logic was merging conditional locks INTO `isLocked`.
-              // That's bad for "Until next turn" clearing.
-              // Let's Refactor: `isLocked` = Action Lock.
-              // Conditional restrictions = `isRestricted`.
-              // But I don't want to change types too much.
-              // I will modify `isLocked` to be `isLocked || conditional`. 
-              // But how to clear only conditional?
-              // We can't distinguish.
-              
-              // FIX: In `updateLocks`, we should only Apply conditional locks if we can verify the condition.
-              // But we can't un-apply Action locks.
-              // Actually, maybe we shouldn't modify State for conditional locks, but check them during Render/Interaction?
-              // Existing code *does* modify state.
-              // Let's keep existing logic but ensure we don't clear an Action Lock.
-              
-              return c;
-          });
-      };
-      
-      // I am disabling the `updateLocks` state mutation logic because it conflicts with the "Lock" keyword duration.
-      // Instead, I will move the Conditional Lock logic into the `canSet` check variables in the Render phase.
-      
-      // ... (Removing the state update for locks here) ...
-
+      // ... Lock logic handled in Render ...
   }, [gameState?.player1.hand, gameState?.player2.hand, gameState?.field, appMode]);
 
   // --- Effect Queue Processor ---
@@ -539,6 +452,9 @@ export default function App() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
       <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
       
+      {/* Visual Effects Layer */}
+      <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
+
       {/* Top Bar */}
       <div className="absolute top-4 right-4 z-50 flex gap-3">
          <button 
