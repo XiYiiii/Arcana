@@ -68,8 +68,8 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   // Parse and structure the description with hanging indents for tags
   const renderDescription = (text: string) => {
      // Split by tags like 【打出】, using lookahead to keep the delimiter.
-     // Also split by (场地...) and (标记...) to ensure they are treated as separate blocks.
-     const blocks = text.split(/(?=【)|(?=\(场地)|(?=\(标记)/g);
+     // Also split by (场地...), (标记...), (任务...) to ensure they are treated as separate blocks.
+     const blocks = text.split(/(?=【)|(?=\(场地)|(?=\(标记)|(?=\(任务)/g);
 
      return blocks.map((block, i) => {
         // Match structure: 【Tag】 Content
@@ -137,6 +137,25 @@ export const CardComponent: React.FC<CardComponentProps> = ({
                <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-emerald-950 rounded-sm px-0.5 py-[1px] border border-emerald-800 shadow-sm min-w-[24px] mt-[1px]">
                    <span className="font-black text-emerald-200 text-[9px] leading-none">场地</span>
                    <span className="text-[6px] font-bold text-emerald-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({fieldName})</span>
+               </div>
+            );
+            return (
+              <div key={i} className="flex items-start mb-1 last:mb-0">
+                 {tagNode}
+                 <span className="text-stone-300 text-[10px] leading-tight flex-1 whitespace-pre-wrap pt-[1px] font-medium break-all">{renderTextContent(content)}</span>
+              </div>
+            );
+        }
+
+        // Handle Quest description lines that start with (任务...)
+        const questMatch = block.trim().match(/^\(任务[“"](.*?)[”"]\)(.*)/);
+        if (questMatch) {
+            const questName = questMatch[1];
+            const content = questMatch[2].trim();
+            const tagNode = (
+               <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-amber-950 rounded-sm px-0.5 py-[1px] border border-amber-800 shadow-sm min-w-[24px] mt-[1px]">
+                   <span className="font-black text-amber-200 text-[9px] leading-none">任务</span>
+                   <span className="text-[6px] font-bold text-amber-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({questName})</span>
                </div>
             );
             return (
