@@ -1,10 +1,11 @@
 
-import { CardDefinition, CardSuit } from '../../../types';
+import { CardDefinition, CardSuit, Keyword } from '../../../types';
+import { addMarkToCard, modifyPlayer } from '../../../services/actions';
 
 export const WANDS_EMPRESS: CardDefinition = {
     id: 'wands-empress', name: '权杖·女皇', suit: CardSuit.WANDS, rank: 203,
-    description: "打出：将手牌中任意一张牌的“抽到”效果变为“打出”效果触发。",
-    keywords: [],
+    description: "打出：指定手牌中一张牌，将其标记为“权杖·女皇”。\n(标记“权杖·女皇”)打出时，这张牌会触发其“抽到时”效果。",
+    keywords: [Keyword.IMPRINT],
     onReveal: (ctx) => {
         ctx.setGameState(prev => {
             if(!prev) return null;
@@ -12,15 +13,17 @@ export const WANDS_EMPRESS: CardDefinition = {
             return {
                 ...prev,
                 interaction: {
-                    id: `empress-${Date.now()}`,
+                    id: `wands-empress-mark-${Date.now()}`,
                     playerId: ctx.sourcePlayerId,
                     title: "权杖·女皇",
-                    description: "选择一张手牌触发其【抽到】效果:",
+                    description: "选择一张手牌添加印记:",
                     inputType: 'CARD_SELECT',
                     cardsToSelect: prev[key].hand,
                     onCardSelect: (c) => {
-                        if(c.onDraw) c.onDraw(ctx);
-                        else ctx.log("该卡牌无抽到效果。");
+                        modifyPlayer(ctx, ctx.sourcePlayerId, p => ({
+                            ...p,
+                            hand: p.hand.map(h => h.instanceId === c.instanceId ? addMarkToCard(h, 'mark-wands-empress') : h)
+                        }));
                         ctx.setGameState(curr => curr ? ({...curr, interaction: null}) : null);
                     }
                 }

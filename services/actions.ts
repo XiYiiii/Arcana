@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import { EffectContext, PlayerState, GameState, Card, CardSuit, Quest, CardDefinition } from '../types';
 import { shuffleDeck } from './gameUtils';
 import { CARD_DEFINITIONS } from '../data/cards';
@@ -34,12 +29,31 @@ export const modifyPlayer = (
     const currentState = prev[key];
     
     // Apply Modification
-    const newState = mod(currentState);
+    let newState = mod(currentState);
 
     // Rule: Prevent Healing if flag is set
     if (currentState.preventHealing && newState.hp > currentState.hp) {
         ctx.log(`[禁疗] ${currentState.name} 无法恢复生命！`);
         newState.hp = currentState.hp;
+    }
+
+    // Passive: Wands Priestess (Double Heal & Discard Self)
+    if (newState.hp > currentState.hp) {
+        const priestessIndex = newState.hand.findIndex(c => c.name.includes('权杖·女祭司'));
+        if (priestessIndex !== -1) {
+            const healAmount = newState.hp - currentState.hp;
+            ctx.log(`[权杖·女祭司] 被动触发！治疗量翻倍 (+${healAmount} -> +${healAmount * 2}) 并弃置自身。`);
+            
+            // Apply doubled healing
+            newState.hp = currentState.hp + (healAmount * 2);
+            
+            // Discard the priestess
+            const priestessCard = newState.hand[priestessIndex];
+            const newHand = [...newState.hand];
+            newHand.splice(priestessIndex, 1);
+            newState.hand = newHand;
+            newState.discardPile = [...newState.discardPile, priestessCard];
+        }
     }
     
     return {
@@ -197,15 +211,15 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
   });
   
   if (amount > 0) {
-      ctx.setGameState(current => {
-          if (!current) return null;
-          // Trigger Sword World quest inside a timeout or separate loop
-          return current;
-      });
-      // Trigger quest progress manually
+      // Trigger quests based on damage taken
       setTimeout(() => {
-          const fid = getTargetId(ctx, targetId);
-          const sid = fid === 1 ? 2 : 1; 
+          const fid = getTargetId(ctx, targetId); // The one taking damage
+          const sid = fid === 1 ? 2 : 1; // The source of damage
+
+          // Quest: Pentacles Priestess (Take Damage)
+          updateQuestProgress(ctx, fid, 'quest-pentacles-priestess', amount);
+
+          // Quest: Swords World (Deal Damage)
           updateQuestProgress(ctx, sid, 'quest-swords-world', amount);
       }, 50);
   }
@@ -248,7 +262,6 @@ export const transformCard = (ctx: EffectContext, targetPlayerId: number, cardIn
         ctx.log(`[变化] ${p.name} 的 [${targetCard.name}] 变成了 [${newCard.name}]！`);
 
         // Check for Pentacles Fool Quest (Trigger for the source of the effect, usually ctx.sourcePlayerId)
-        // But who caused the transform? usually the player playing the card.
         setTimeout(() => updateQuestProgress(ctx, ctx.sourcePlayerId, 'quest-pentacles-fool', 1), 50);
 
         // Check for Pentacles Fool Field Counter (Global)
@@ -281,6 +294,20 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
   if (count > 0) {
       updateQuestProgress(ctx, finalTargetId, 'quest-cups-chariot', count);
   }
+
+  // Field: Pentacles Magician (Shuffle before draw if active)
+  ctx.setGameState(prev => {
+      if (!prev) return null;
+      if (prev.field && prev.field.active && prev.field.card.name.includes('星币·魔术师')) {
+          const key = finalTargetId === 1 ? 'player1' : 'player2';
+          ctx.log(`[场地] 星币·魔术师激活！${prev[key].name} 抽牌前重洗牌堆。`);
+          return {
+              ...prev,
+              [key]: { ...prev[key], deck: shuffleDeck(prev[key].deck) }
+          };
+      }
+      return prev;
+  });
 
   ctx.setGameState(prev => {
     if (!prev) return null;
@@ -325,7 +352,7 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
              };
              ctx.log(`[变化] 抽到的 [${card.name}] 变成了 [${transformedCard.name}]！`);
              card = transformedCard;
-             pendingTransform = false; // Only affects the first card drawn? Prompt says "Next drawn card".
+             pendingTransform = false; 
         }
 
         // Swords Tower Logic
@@ -427,17 +454,34 @@ export const seizeCard = (ctx: EffectContext, cardInstanceId: string) => {
         }
 
         if(!cardToSeize) return prev;
-        if((cardToSeize as Card).isTreasure) {
-            ctx.log(`[夺取失败] ${cardToSeize.name} 是【宝藏】牌，无法被夺取！`);
+        
+        const c = cardToSeize as Card;
+
+        if(c.isTreasure) {
+            ctx.log(`[夺取失败] ${c.name} 是【宝藏】牌，无法被夺取！`);
             return prev;
         }
 
-        ctx.log(`[夺取] 从 ${prev[ownerKey].name} 处夺取了 [${cardToSeize.name}]！`);
+        // Pentacles Emperor Passive: If seized, discard instead
+        if(c.name.includes('星币·皇帝')) {
+             ctx.log(`[夺取抵抗] ${c.name} 拒绝被夺取，自我放逐！`);
+             return {
+                 ...prev,
+                 [ownerKey]: { 
+                     ...prev[ownerKey], 
+                     hand: newOwnerHand, 
+                     fieldSlot: newOwnerField,
+                     discardPile: [...prev[ownerKey].discardPile, c] 
+                 }
+             };
+        }
+
+        ctx.log(`[夺取] 从 ${prev[ownerKey].name} 处夺取了 [${c.name}]！`);
 
         return {
             ...prev,
             [ownerKey]: { ...prev[ownerKey], hand: newOwnerHand, fieldSlot: newOwnerField },
-            [targetKey]: { ...prev[targetKey], hand: [...prev[targetKey].hand, cardToSeize] }
+            [targetKey]: { ...prev[targetKey], hand: [...prev[targetKey].hand, c] }
         };
     });
 };
@@ -456,6 +500,7 @@ export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: str
         
         let oppHandVulnerable = [...vulnerableCards];
         let myHand = [...prev[myKey].hand];
+        let oppDiscard = [...prev[oppKey].discardPile];
         
         // Ensure we don't try to seize more than available
         const actualCount = Math.min(count, oppHandVulnerable.length);
@@ -471,6 +516,13 @@ export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: str
             
             oppHandVulnerable.splice(randIdx, 1);
             
+            // Pentacles Emperor Passive
+            if (seized.name.includes('星币·皇帝')) {
+                 ctx.log(`[盲夺抵抗] 抓到了 [${seized.name}]，但它自我放逐了！`);
+                 oppDiscard.push(seized);
+                 continue; // Do not add to myHand
+            }
+            
             if (markToAdd) {
                 seized = addMarkToCard(seized, markToAdd);
             }
@@ -484,7 +536,7 @@ export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: str
 
         return {
             ...prev,
-            [oppKey]: { ...prev[oppKey], hand: newOppHand },
+            [oppKey]: { ...prev[oppKey], hand: newOppHand, discardPile: oppDiscard },
             [myKey]: { ...prev[myKey], hand: myHand }
         };
     });
@@ -764,15 +816,6 @@ export const addQuest = (ctx: EffectContext, playerId: number, quest: Quest) => 
 };
 
 export const updateQuestProgress = (ctx: EffectContext, playerId: number, questId: string, amount: number) => {
-    // Note: We use setTimeout to break the render cycle or allow state to settle, 
-    // but here we are usually inside an event handler. We need access to current state.
-    // We'll use setGameState with functional update.
-    
-    // We need to trigger side effects (rewards) if complete.
-    // This is tricky inside a setState reducer. 
-    // We will do a two-step process: Update progress, then if complete, enqueue a reward action/effect.
-    // Or handle it immediately if simple.
-    
     ctx.setGameState(prev => {
         if (!prev) return null;
         const key = playerId === 1 ? 'player1' : 'player2';
@@ -788,8 +831,7 @@ export const updateQuestProgress = (ctx: EffectContext, playerId: number, questI
             // COMPLETE
             ctx.log(`[任务完成] ${p.name} 完成了任务：${quest.name}！`);
             
-            // Handle Rewards Logic Here or delegate?
-            // Since we are in a reducer, we can modify state directly for simple rewards.
+            // Handle Rewards Logic Here
             let updatedPlayer = { ...p };
             let interaction = prev.interaction;
             
@@ -920,6 +962,41 @@ export const updateQuestProgress = (ctx: EffectContext, playerId: number, questI
                          }
                      });
                  }, 200);
+            } else if (questId === 'quest-pentacles-priestess') {
+                // Pentacles Priestess Reward: Scry 5, move 1 to bottom
+                setTimeout(() => {
+                    ctx.setGameState(curr => {
+                        if(!curr) return null;
+                        const key = playerId === 1 ? 'player1' : 'player2';
+                        const deck = curr[key].deck;
+                        if(deck.length === 0) return curr;
+                        
+                        const toScry = deck.slice(0, 5);
+                        
+                        return {
+                            ...curr,
+                            interaction: {
+                                id: `quest-pentacles-priestess-reward-${Date.now()}`,
+                                playerId: playerId,
+                                title: "任务奖励：星币·女祭司",
+                                description: `占卜结果: ${toScry.map(c=>c.name).join(', ')}。选择任意张移至牌堆底，其余保留原位:`,
+                                inputType: 'CARD_SELECT',
+                                cardsToSelect: toScry,
+                                options: [{label: "不移动", action: () => ctx.setGameState(s=>s?({...s, interaction:null}):null)}],
+                                onCardSelect: (c) => {
+                                    modifyPlayer(ctx, playerId, pl => ({
+                                        ...pl,
+                                        deck: [...pl.deck.filter(dc => dc.instanceId !== c.instanceId), c]
+                                    }));
+                                    ctx.log(`[星币·女祭司] 将 [${c.name}] 移到了牌堆底。`);
+                                    // Usually scry allows multiple, but simplified to picking 1 or repeating.
+                                    // For simplicity, pick 1 closes dialog.
+                                    ctx.setGameState(s=>s?({...s, interaction:null}):null);
+                                }
+                            }
+                        }
+                    });
+                }, 200);
             }
 
             return {

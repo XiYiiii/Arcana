@@ -1,7 +1,4 @@
 
-
-
-
 import { GamePhase, InstantWindow, EffectContext, Card, PendingEffect, Keyword } from '../../types';
 import { damagePlayer, modifyPlayer, getOpponentId, drawCards, destroyCard, updateQuestProgress } from '../../services/actions';
 import { compareCards } from '../../services/gameUtils';
@@ -138,7 +135,19 @@ export const executeResolveEffects = async (
            addLog(`[反转] ${p.name} 的 [${card.name}] 效果将反转！`);
        }
 
-       // --- GENERIC MARK TRIGGERS ---
+       // --- MARK TRIGGERS ---
+
+       // Wands Empress Mark: Trigger OnDraw
+       if (card.marks.includes('mark-wands-empress')) {
+           if (card.onDraw) {
+               addLog(`[权杖·女皇] 印记触发！执行 [${card.name}] 的抽到效果。`);
+               card.onDraw(effCtx);
+               const checkForInteraction = async () => { while (gameStateRef.current?.interaction) await delay(200); };
+               await checkForInteraction();
+               await delay(DELAY_MS/2);
+           }
+       }
+
        // Swords Hanged Man (Recover 2HP on play)
        if (card.marks.includes('mark-swords-hangedman')) {
           addLog(`[倒吊人] 标记触发！${p.name} 恢复 2 点生命。`);
