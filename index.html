@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARCANA - Duel of Fates</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Keeping Tailwind CDN for simplicity without complex PostCSS setup, 
+         but package.json includes it if you want to migrate to local build later. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              serif: ['Cinzel', 'serif'],
+            },
+            boxShadow: {
+              'card': '0 10px 20px -5px rgba(0, 0, 0, 0.3)',
+              'card-hover': '0 20px 30px -10px rgba(0, 0, 0, 0.4)',
+              'glow': '0 0 15px rgba(250, 204, 21, 0.3)',
+            },
+            animation: {
+              'draw-p1': 'drawFromRight 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards',
+              'draw-p2': 'drawFromLeft 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards',
+              'pile-pop': 'pilePop 0.3s ease-out',
+            },
+            keyframes: {
+              drawFromRight: {
+                '0%': { transform: 'translate(100%, 50%) scale(0.3) rotate(10deg)', opacity: '0' },
+                '100%': { transform: 'translate(0, 0) scale(1) rotate(0deg)', opacity: '1' },
+              },
+              drawFromLeft: {
+                '0%': { transform: 'translate(-100%, -50%) scale(0.3) rotate(-10deg)', opacity: '0' },
+                '100%': { transform: 'translate(0, 0) scale(1) rotate(0deg)', opacity: '1' },
+              },
+              pilePop: {
+                '0%': { transform: 'scale(1.2)' },
+                '100%': { transform: 'scale(1)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

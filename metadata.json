@@ -1,0 +1,5 @@
+{
+  "name": "Project Blank - 1v1 Card Framework",
+  "description": "A skeletal 1v1 card game framework focusing on phase mechanics (Draw, Set, Reveal, Discard) with simultaneous turns.",
+  "requestFramePermissions": []
+}
