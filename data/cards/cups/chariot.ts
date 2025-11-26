@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { damagePlayer, drawCards, addQuest } from '../../../services/actions';
 
 export const CUPS_CHARIOT: CardDefinition = {
     id: 'cups-chariot', name: '圣杯·战车', suit: CardSuit.CUPS, rank: 107, 
-    description: "打出：从双方抽牌堆顶端抽取一张牌并进行拼点，若双方相同则对双方造成[Atk]点伤害，否则由序号大者对序号小者造成[Atk]点伤害。\n弃置：己方获得任务“圣杯·战车”。\n(任务“圣杯·战车”)抽十张牌以完成此任务。任务完成后对对方造成[Atk]点伤害。",
     keywords: [Keyword.CLASH, Keyword.QUEST],
     onReveal: (ctx) => {
        ctx.log("【战车】冲锋！抽取顶牌拼点...");

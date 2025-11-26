@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, discardCards, setField, shufflePlayerDeck } from '../../../services/actions';
 
 export const SWORDS_STAR: CardDefinition = {
     id: 'swords-star', name: '宝剑·星星', suit: CardSuit.SWORDS, rank: 317,
-    description: "抽到：若手牌中有“月亮”或“太阳”，复制其中一张，然后弃置此牌。否则将此牌放回抽牌堆，然后打乱抽牌堆。\n弃置：设置场地为“宝剑·星星”，并激活之。\n(场地“宝剑·星星”)当此场地激活时，所有“太阳”的被动效果被无效。",
     keywords: [Keyword.FIELD],
     onDraw: (ctx) => {
         const hand = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].hand;
@@ -27,6 +24,6 @@ export const SWORDS_STAR: CardDefinition = {
         }
     },
     onDiscard: (ctx) => {
-        setField(ctx, ctx.card);
+        setField(ctx, ctx.card, true);
     }
 };

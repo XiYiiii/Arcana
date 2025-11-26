@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { modifyPlayer, drawCards, getOpponentId } from '../../../services/actions';
 
 export const WANDS_FOOL: CardDefinition = {
     id: 'wands-fool', name: '权杖·愚者', suit: CardSuit.WANDS, rank: 200,
-    // Description loaded from data/descriptions.ts
     keywords: [],
     onDraw: (ctx) => {
         ctx.log("【愚者】混乱！双方手牌全部弃置！");

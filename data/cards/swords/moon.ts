@@ -1,12 +1,8 @@
-
-
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { modifyPlayer, getOpponentId } from '../../../services/actions';
 
 export const SWORDS_MOON: CardDefinition = {
     id: 'swords-moon', name: '宝剑·月亮', suit: CardSuit.SWORDS, rank: 318,
-    description: "打出：选择：将当前场地的激活效果撤销，或激活当前场地。\n弃置：若当前场地的所有者为对方，改为己方；否则改为对方。",
     keywords: [],
     onReveal: (ctx) => {
         if (!ctx.gameState.field) {

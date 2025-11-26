@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, damagePlayer, addMarkToCard, getOpponentId } from '../../../services/actions';
 
 export const SWORDS_HIEROPHANT: CardDefinition = {
     id: 'swords-hierophant', name: '宝剑·教皇', suit: CardSuit.SWORDS, rank: 305,
-    description: "打出：标记手牌中的所有牌为“宝剑·教皇”。\n弃置：随机标记对手手牌中的两张牌为“宝剑·教皇”。\n印记(宝剑·教皇)：这张牌被打出时，对对方造成[Atk]点伤害；被弃置时，对己方造成[Atk]点伤害。",
     keywords: [Keyword.IMPRINT],
     onReveal: (ctx) => {
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({

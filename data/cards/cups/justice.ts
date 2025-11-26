@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { modifyPlayer, damagePlayer, drawCards } from '../../../services/actions';
 
 export const CUPS_JUSTICE: CardDefinition = {
     id: 'cups-justice', name: '圣杯·正义', suit: CardSuit.CUPS, rank: 111,
-    description: "抽到：丢弃双方所有手牌，每丢弃一张扣除一点生命。\n打出：双方同时抽取牌，直到双方手牌达到三张，每抽一张扣除一点生命。",
     keywords: [],
     onDraw: (ctx) => {
         const handle = (pid: number) => {

@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { addQuest, modifyPlayer, putCardInDeck } from '../../../services/actions';
 
 export const PENTACLES_PRIESTESS: CardDefinition = {
     id: 'pentacles-priestess', name: '星币·女祭司', suit: CardSuit.PENTACLES, rank: 402,
-    description: "抽到：己方获得任务“星币·女祭司”。\n打出：占卜己方的三张牌，其中：每有一张“圣杯”，恢复1点Hp，每有一张“宝剑”，扣除1点Hp。\n弃置：己方取消任务“星币·女祭司”。\n(任务“星币·女祭司”)己方受到10点Hp后完成此任务。占卜己方五张牌，将其中任意张移动到牌堆底。",
     keywords: [Keyword.QUEST, Keyword.SCRY],
     onDraw: (ctx) => {
         addQuest(ctx, ctx.sourcePlayerId, {

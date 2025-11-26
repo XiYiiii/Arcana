@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { modifyPlayer, updateQuestProgress, getOpponentId } from '../../../services/actions';
 
 export const PENTACLES_EMPRESS: CardDefinition = {
     id: 'pentacles-empress', name: '星币·女皇', suit: CardSuit.PENTACLES, rank: 403,
-    description: "打出：指定一个己方任务，并完成它。\n弃置：指定一个对方任务，将其任务进度归零。",
     keywords: [],
     onReveal: (ctx) => {
         ctx.setGameState(prev => {

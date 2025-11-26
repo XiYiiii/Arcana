@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword, Card } from '../../../types';
 import { modifyPlayer, addMarkToCard } from '../../../services/actions';
 
 export const CUPS_MOON: CardDefinition = {
     id: 'cups-moon', name: '圣杯·月亮', suit: CardSuit.CUPS, rank: 118,
-    description: "打出：清除己方或对方所有牌的标记，每清除一个恢复2生命。\n弃置：随机清除己方和对方所有牌中，有标记的一张牌的标记。",
     keywords: [],
     onReveal: (ctx) => {
         ctx.setGameState(prev => ({

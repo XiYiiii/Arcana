@@ -3,7 +3,6 @@ import { damagePlayer, getOpponentId, putCardInDeck } from '../../../services/ac
 
 export const SWORDS_WHEEL: CardDefinition = {
     id: 'swords-wheel', name: '宝剑·命运之轮', suit: CardSuit.SWORDS, rank: 310,
-    description: "抽到：对对方造成[Atk]点伤害，然后进入对方的手牌。\n打出：对对方造成[2*Atk]点伤害，然后进入对方的抽牌堆，打乱对方的抽牌堆。",
     keywords: [Keyword.SHUFFLE],
     onDraw: (ctx) => {
         const atk = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].atk;

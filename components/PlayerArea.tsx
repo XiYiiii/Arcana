@@ -18,18 +18,34 @@ interface PlayerAreaProps {
   onSelect: (c: Card) => void;
   onInstant: (id: string) => void;
   onViewDiscard?: () => void;
+  onViewDeck?: () => void; // New
+  onViewVault?: () => void; // New - Technically player doesn't have a personal vault, but we can view treasures collected? Or Game Vault? 
+  // Wait, "Treasure Vault" visual usually implies the GLOBAL vault or personal collected treasures? 
+  // In `App.tsx` logic, treasures are just definitions. But prompt says "Knowing how many treasures in *my* vault".
+  // Actually, treasures are earned into HAND. There isn't a separate "Vault Pile" for player. 
+  // The "Treasure Vault" UI element usually represents the source of treasures (Global).
+  // But maybe the user means "How many treasures are left in the global vault"?
+  // Or "How many cards in my Deck".
+  // Let's assume "Vault" click shows the global available treasures.
 }
 
-const TreasureVault = ({ position }: { position: 'top' | 'bottom' }) => (
-    <div className={`absolute ${position === 'top' ? '-top-8' : '-bottom-8'} left-1/2 -translate-x-1/2 w-24 sm:w-28 flex justify-center pointer-events-none z-0 opacity-80`}>
+const TreasureVault = ({ position, onClick }: { position: 'top' | 'bottom', onClick?: () => void }) => (
+    <div 
+        onClick={onClick}
+        className={`absolute ${position === 'top' ? '-top-8' : '-bottom-8'} left-1/2 -translate-x-1/2 w-24 sm:w-28 flex justify-center z-0 opacity-80 ${onClick ? 'cursor-pointer hover:scale-105 transition-transform' : 'pointer-events-none'}`}
+    >
         <div className="bg-stone-900/90 border border-amber-700/60 rounded px-2 py-0.5 flex items-center gap-1 shadow-[0_0_10px_rgba(180,83,9,0.3)] backdrop-blur-sm">
              <span className="text-[10px] text-amber-500 font-serif font-bold tracking-wider">✨ 宝库</span>
         </div>
     </div>
 );
 
-const DeckPile = ({ count, isOpponent }: { count: number, isOpponent?: boolean }) => (
-    <div className="relative w-24 h-32 sm:w-28 sm:h-36 group perspective-1000 cursor-help" title="抽牌堆">
+const DeckPile = ({ count, isOpponent, onClick }: { count: number, isOpponent?: boolean, onClick?: () => void }) => (
+    <div 
+        onClick={onClick}
+        className={`relative w-24 h-32 sm:w-28 sm:h-36 group perspective-1000 ${onClick ? 'cursor-pointer' : 'cursor-default'}`} 
+        title="抽牌堆"
+    >
         <div className="absolute inset-0 bg-stone-900/50 rounded-lg border-2 border-dashed border-stone-700 transform translate-x-1 translate-y-1"></div>
         {count > 0 ? (
             <div className="relative w-full h-full rounded-lg bg-stone-800 border border-stone-600 shadow-xl flex items-center justify-center transition-transform group-hover:-translate-y-1 z-10">
@@ -50,8 +66,8 @@ const DeckPile = ({ count, isOpponent }: { count: number, isOpponent?: boolean }
                 牌库空
             </div>
         )}
-        <div className="mt-2 text-center text-[10px] text-stone-500 font-bold tracking-widest uppercase">
-            抽牌堆
+        <div className="mt-2 text-center text-[10px] text-stone-500 font-bold tracking-widest uppercase group-hover:text-stone-300">
+            抽牌堆 {onClick && <span className="opacity-50 text-[8px] block">(点击查看)</span>}
         </div>
     </div>
 );
@@ -95,7 +111,7 @@ const DiscardPile = ({ cards, isOpponent, onClick }: { cards: Card[], isOpponent
 };
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
-    player, isOpponent, phase, selectedCardId, mustDiscard, canSet, canInstant, isResolving, instantWindow, onSelect, onInstant, onViewDiscard
+    player, isOpponent, phase, selectedCardId, mustDiscard, canSet, canInstant, isResolving, instantWindow, onSelect, onInstant, onViewDiscard, onViewDeck, onViewVault
 }) => {
    const isDiscardPhase = phase === GamePhase.DISCARD;
    const allowInteraction = phase === GamePhase.SET || instantWindow !== InstantWindow.NONE || (phase === GamePhase.DISCARD && mustDiscard);
@@ -183,8 +199,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                 {isOpponent ? (
                     // Opponent Left: Deck (P2)
                     <div className="relative">
-                        <DeckPile count={player.deck.length} isOpponent />
-                        <TreasureVault position="bottom" />
+                        <DeckPile count={player.deck.length} isOpponent onClick={onViewDeck} />
+                        <TreasureVault position="bottom" onClick={onViewVault} />
                     </div>
                 ) : (
                     // Player Left: Discard
@@ -274,8 +290,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                 ) : (
                     // Player Right: Deck (P1)
                     <div className="relative">
-                        <TreasureVault position="top" />
-                        <DeckPile count={player.deck.length} />
+                        <TreasureVault position="top" onClick={onViewVault} />
+                        <DeckPile count={player.deck.length} onClick={onViewDeck} />
                     </div>
                 )}
             </div>

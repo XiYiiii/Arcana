@@ -1,11 +1,9 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { drawCards, damagePlayer, getOpponentId, modifyPlayer, setField, addMarkToCard } from '../../../services/actions';
 import { CARD_DEFINITIONS } from '../../cards';
 
 export const PENTACLES_HIEROPHANT: CardDefinition = {
     id: 'pentacles-hierophant', name: '星币·教皇', suit: CardSuit.PENTACLES, rank: 405,
-    description: "抽到：若当前有场地，场地的所有人对另一方造成其[Atk]点伤害；若当前无场地，则随机从己方抽牌堆中抽一张带有“场地”关键词的牌，并将其对应的场地置入。\n打出：若当前有场地，将己方随机一张手牌标记为“星币·教皇”；若当前没有场地，抽两张牌。\n(标记“星币·教皇”)打出这张牌时，抽一张牌。",
     keywords: [Keyword.IMPRINT, Keyword.FIELD],
     onDraw: (ctx) => {
         if (ctx.gameState.field) {

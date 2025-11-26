@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, discardCards, seizeCard, getOpponentId } from '../../../services/actions';
 
 export const PENTACLES_EMPEROR: CardDefinition = {
     id: 'pentacles-emperor', name: '星币·皇帝', suit: CardSuit.PENTACLES, rank: 404,
-    description: "打出：取一个n，扣除己方4*n点Hp，弃置己方n张牌，然后夺取对方n张牌。\n被动：当此牌被盲夺或夺取时，这张牌被弃置。",
     keywords: [Keyword.SEIZE],
     onReveal: (ctx) => {
         const hp = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].hp;

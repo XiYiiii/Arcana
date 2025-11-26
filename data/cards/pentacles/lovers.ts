@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { blindSeize, transformCard, getOpponentId, modifyPlayer, addMarkToCard } from '../../../services/actions';
 
 export const PENTACLES_LOVERS: CardDefinition = {
     id: 'pentacles-lovers', name: '星币·恋人', suit: CardSuit.PENTACLES, rank: 406,
-    description: "抽到：盲夺对方的一张牌，然后将此牌置入对手手牌，然后变化此牌。\n打出：随机标记双方各一张牌为“星币·恋人”。\n(标记“星币·恋人”)在结束阶段结束后，若对方手牌中没有带有“星币·恋人”标记的牌，弃置此牌。",
     keywords: [Keyword.BLIND_SEIZE, Keyword.TRANSFORM, Keyword.IMPRINT],
     onDraw: (ctx) => {
         blindSeize(ctx, 1);

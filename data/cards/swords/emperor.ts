@@ -1,4 +1,3 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, discardCards } from '../../../services/actions';
 import { TREASURE_CUPS } from '../cups/treasure';
@@ -7,7 +6,6 @@ import { TREASURE_SWORDS } from './treasure';
 
 export const SWORDS_EMPEROR: CardDefinition = {
     id: 'swords-emperor', name: '宝剑·皇帝', suit: CardSuit.SWORDS, rank: 304,
-    description: "打出：扣除己方当前的一半生命值（向上取整），指定一张宝库中存在的宝藏牌，并获取之。\n弃置：己方恢复[2*Atk]点生命值，弃置己方所有手牌。",
     keywords: [Keyword.TREASURE],
     onReveal: (ctx) => {
         const hp = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].hp;

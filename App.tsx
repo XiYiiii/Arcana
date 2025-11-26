@@ -6,6 +6,10 @@
 
 
 
+
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from './types';
 import { generateDeck, shuffleDeck } from './services/gameUtils';
@@ -16,7 +20,7 @@ import { CARD_DEFINITIONS } from './data/cards';
 import { PhaseBar } from './components/PhaseBar';
 import { PlayerArea } from './components/PlayerArea';
 import { FieldArea } from './components/FieldArea';
-import { InteractionOverlay, EffectOverlay, GameOverOverlay, DebugOverlay, GalleryOverlay, DiscardOverlay } from './components/overlays';
+import { InteractionOverlay, EffectOverlay, GameOverOverlay, DebugOverlay, GalleryOverlay, CardPileOverlay } from './components/overlays';
 import { VisualEffectsLayer } from './components/VisualEffectsLayer';
 import { StartScreen } from './components/screens/StartScreen';
 import { GameSetupScreen } from './components/screens/GameSetupScreen';
@@ -47,7 +51,9 @@ export default function App() {
   // Debug & UI State
   const [showDebug, setShowDebug] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
-  const [viewingDiscardPid, setViewingDiscardPid] = useState<number | null>(null);
+  
+  // Pile Viewer State
+  const [viewingPile, setViewingPile] = useState<{ type: 'DISCARD' | 'DECK' | 'VAULT', pid: number, cards: Card[], title: string, sorted?: boolean } | null>(null);
 
   // Visual Effect Resolver
   const activeEffectResolverRef = useRef<(() => void) | null>(null);
@@ -93,7 +99,7 @@ export default function App() {
         deck, hand, discardPile: [],
         fieldSlot: null, isFieldCardRevealed: false,
         immunityThisTurn: false, immunityNextTurn: false, effectDoubleNext: false,
-        isReversed: false, isInvalidated: false, hpRecoverNextTurn: 0, invalidateNextPlayedCard: false,
+        isReversed: false, isInvalidated: false, hpRecoverNextTurn: 0, invalidateNextPlayedCard: false, invalidateNextTurn: false,
         preventHealing: false, hasLifesteal: false, damageReflection: false, incomingDamageConversion: false, nextDamageDouble: false,
         swordsHangedManActive: false,
         delayedEffects: [],
@@ -354,6 +360,32 @@ export default function App() {
       if (player.id === 1) setP1SelectedCardId(null);
       if (player.id === 2) setP2SelectedCardId(null);
   };
+  
+  // --- Viewer Handlers ---
+  const openPileView = (type: 'DISCARD' | 'DECK' | 'VAULT', pid: number) => {
+      if (!gameState) return;
+      const player = pid === 1 ? gameState.player1 : gameState.player2;
+      
+      let cards: Card[] = [];
+      let title = "";
+      let sorted = false;
+      
+      if (type === 'DISCARD') {
+          cards = player.discardPile;
+          title = `${player.name} 的弃牌堆`;
+      } else if (type === 'DECK') {
+          cards = player.deck;
+          title = `${player.name} 的抽牌堆 (查看)`;
+          sorted = true; // IMPORTANT: Prevent cheating by sorting
+      } else if (type === 'VAULT') {
+          // Show general treasures available (from definitions)
+          const treasures = CARD_DEFINITIONS.filter(c => c.isTreasure).map(t => ({...t, instanceId: `vault-${t.id}`, marks: [], description: t.description || ""}));
+          cards = treasures;
+          title = `${player.name} 的宝库`; // Personal Vault
+      }
+      
+      setViewingPile({ type, pid, cards, title, sorted });
+  };
 
   // --- RENDER SWITCH ---
   if (appMode === 'MENU') {
@@ -442,8 +474,6 @@ export default function App() {
     return null;
   };
 
-  const viewingDiscardPlayer = viewingDiscardPid === 1 ? player1 : viewingDiscardPid === 2 ? player2 : null;
-
   return (
     <div className="min-h-screen bg-stone-900 flex flex-col font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
@@ -479,7 +509,14 @@ export default function App() {
 
       {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
       
-      {viewingDiscardPlayer && <DiscardOverlay player={viewingDiscardPlayer} onClose={() => setViewingDiscardPid(null)} />}
+      {viewingPile && (
+          <CardPileOverlay 
+              title={viewingPile.title} 
+              cards={viewingPile.cards} 
+              onClose={() => setViewingPile(null)} 
+              sorted={viewingPile.sorted}
+          />
+      )}
 
       {showDebug && (
           <DebugOverlay 
@@ -526,7 +563,9 @@ export default function App() {
           selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
           canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
           onSelect={(c) => handleCardClick(player2, c)} onInstant={(id) => handleInstantUse(player2, id)}
-          onViewDiscard={() => setViewingDiscardPid(2)}
+          onViewDiscard={() => openPileView('DISCARD', 2)}
+          onViewDeck={() => openPileView('DECK', 2)}
+          onViewVault={() => openPileView('VAULT', 2)}
         />
         
         <FieldArea gameState={gameState} player1={player1} player2={player2} />
@@ -536,7 +575,9 @@ export default function App() {
           selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
           canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
           onSelect={(c) => handleCardClick(player1, c)} onInstant={(id) => handleInstantUse(player1, id)}
-          onViewDiscard={() => setViewingDiscardPid(1)}
+          onViewDiscard={() => openPileView('DISCARD', 1)}
+          onViewDeck={() => openPileView('DECK', 1)}
+          onViewVault={() => openPileView('VAULT', 1)}
         />
       </div>
 

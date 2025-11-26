@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { addMarkToCard, modifyPlayer } from '../../../services/actions';
 
 export const WANDS_EMPRESS: CardDefinition = {
     id: 'wands-empress', name: '权杖·女皇', suit: CardSuit.WANDS, rank: 203,
-    description: "打出：指定手牌中一张牌，将其标记为“权杖·女皇”。\n(标记“权杖·女皇”)打出时，这张牌会触发其“抽到时”效果。",
     keywords: [Keyword.IMPRINT],
     onReveal: (ctx) => {
         ctx.setGameState(prev => {

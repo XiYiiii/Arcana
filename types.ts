@@ -87,6 +87,7 @@ export interface Card extends CardDefinition {
   instanceId: string;
   marks: string[]; // Cards can hold multiple marks (Now restricted to 1 by logic)
   isLocked?: boolean; // New: Cannot be set if true
+  lockedTurns?: number; // New: Duration of lock in cleanup cycles
   tempRank?: number; // New: For temporary rank changes (Magician)
   description: string; // Required in runtime instance
 }
@@ -150,7 +151,8 @@ export interface PlayerState {
   isReversed: boolean; // Next effect is reversed
   isInvalidated: boolean; // Next effect is invalidated
   hpRecoverNextTurn: number; // HP to recover next turn (Cup Hanged Man)
-  invalidateNextPlayedCard: boolean; // Wands Temperance logic
+  invalidateNextPlayedCard: boolean; // Wands Temperance logic (Current effect)
+  invalidateNextTurn: boolean; // Wands Temperance logic (Next Turn trigger)
   
   // Swords Status Flags
   preventHealing: boolean; // Empress: Cannot heal

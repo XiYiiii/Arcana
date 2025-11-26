@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, discardCards, addMarkToCard, returnCard } from '../../../services/actions';
 
 export const WANDS_SUN: CardDefinition = {
     id: 'wands-sun', name: '权杖·太阳', suit: CardSuit.WANDS, rank: 219,
-    // Description handled in descriptions.ts
     keywords: [Keyword.SCRY, Keyword.RETURN, Keyword.IMPRINT],
     onDraw: (ctx) => { modifyPlayer(ctx, ctx.sourcePlayerId, p => ({ ...p, hand: p.hand.map(c => c.instanceId===ctx.card.instanceId ? addMarkToCard(c, 'mark-sun') : c) })); },
     onReveal: (ctx) => {

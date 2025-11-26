@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, addMarkToCard, getOpponentId } from '../../../services/actions';
 
 export const SWORDS_EMPRESS: CardDefinition = {
     id: 'swords-empress', name: '宝剑·女皇', suit: CardSuit.SWORDS, rank: 303,
-    description: "打出：标记手牌中的所有宝剑牌为“宝剑·女皇”。\n印记(宝剑·女皇)：这一回合中，对手无法恢复。",
     keywords: [Keyword.IMPRINT],
     onReveal: (ctx) => {
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({

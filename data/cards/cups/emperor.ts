@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { getOpponentId, discardCards, modifyPlayer, addMarkToCard } from '../../../services/actions';
 
 export const CUPS_EMPEROR: CardDefinition = {
     id: 'cups-emperor', name: '圣杯·皇帝', suit: CardSuit.CUPS, rank: 104, 
-    description: "抽到：观察对手手牌，丢弃此牌。\n打出：随机将手牌中一张牌标记为“圣杯·皇帝”。\n(标记“圣杯·皇帝”)此牌被打出时，观察对手手牌。",
     keywords: [Keyword.IMPRINT], 
     onDraw: (ctx) => { 
       ctx.setGameState(prev => {

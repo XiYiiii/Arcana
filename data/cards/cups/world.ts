@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { modifyPlayer, getOpponentId } from '../../../services/actions';
 
 export const CUPS_WORLD: CardDefinition = {
     id: 'cups-world', name: '圣杯·世界', suit: CardSuit.CUPS, rank: 121,
-    description: "打出：将此牌置于己方抽牌堆底。\n插入(亮牌前)：反转对手打出的牌，并将此牌置于对手抽牌堆顶。",
     keywords: [Keyword.REVERSE],
     onReveal: (ctx) => {
         modifyPlayer(ctx, ctx.sourcePlayerId, p => ({

@@ -1,11 +1,9 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer } from '../../../services/actions';
 import { TREASURE_CUPS } from './treasure';
 
 export const CUPS_HIEROPHANT: CardDefinition = {
     id: 'cups-hierophant', name: '圣杯·教皇', suit: CardSuit.CUPS, rank: 105, 
-    description: "打出：从宝库中获取“宝藏·圣杯”。",
     keywords: [Keyword.TREASURE],
     onReveal: (ctx) => {
       const treasure = { 

@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { discardCards, destroyCard, getOpponentId } from '../../../services/actions';
 
 export const PENTACLES_STRENGTH: CardDefinition = {
     id: 'pentacles-strength', name: '星币·力量', suit: CardSuit.PENTACLES, rank: 408,
-    description: "打出：随机弃置己方一张手牌，然后随机销毁对方的一张手牌。",
     keywords: [Keyword.DESTROY],
     onReveal: (ctx) => {
         // Calculate targets synchronously first to avoid state race conditions

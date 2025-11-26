@@ -1,12 +1,9 @@
-
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { damagePlayer, modifyPlayer } from '../../../services/actions';
 import { shuffleDeck } from '../../../services/gameUtils';
 
 export const SWORDS_JUSTICE: CardDefinition = {
     id: 'swords-justice', name: '宝剑·正义', suit: CardSuit.SWORDS, rank: 311,
-    description: "打出：对方每比自己多1张牌，对对方造成1点伤害。\n弃置：随机从抽牌堆中获取(若有)一张“倒吊人”。",
     keywords: [],
     onReveal: (ctx) => {
         const p1 = ctx.gameState.player1;

@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { clash, damagePlayer, modifyPlayer } from '../../../services/actions';
 
 export const WANDS_CHARIOT: CardDefinition = {
     id: 'wands-chariot', name: '权杖·战车', suit: CardSuit.WANDS, rank: 207,
-    description: "打出：从双方抽牌堆顶端抽取一张牌并进行拼点，若双方相同则同时抽1张牌，否则由序号大者抽1张牌。\n被动：此牌造成伤害时不是造成[Atk]点伤害，而是[Atk*1.5](向下取整)点伤害。",
     keywords: [Keyword.CLASH],
     onReveal: (ctx) => {
        // Clash Logic

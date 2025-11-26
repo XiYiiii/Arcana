@@ -1,9 +1,7 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 
 export const WANDS_TEMPERANCE: CardDefinition = {
     id: 'wands-temperance', name: '权杖·节制', suit: CardSuit.WANDS, rank: 214,
-    description: "打出：无效双方打出的下一张牌。",
     keywords: [Keyword.INVALIDATE],
     onReveal: (ctx) => {
         // Set both flags atomically to ensure consistency
@@ -11,10 +9,10 @@ export const WANDS_TEMPERANCE: CardDefinition = {
             if (!prev) return null;
             return {
                 ...prev,
-                player1: { ...prev.player1, invalidateNextPlayedCard: true },
-                player2: { ...prev.player2, invalidateNextPlayedCard: true }
+                player1: { ...prev.player1, invalidateNextTurn: true },
+                player2: { ...prev.player2, invalidateNextTurn: true }
             };
         });
-        ctx.log("【节制】平衡！双方下一张打出的牌将被无效。");
+        ctx.log("【节制】平衡！双方下一轮打出的牌将被无效。");
     }
 };

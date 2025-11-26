@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, drawCards, getOpponentId } from '../../../services/actions';
 
 export const SWORDS_HERMIT: CardDefinition = {
     id: 'swords-hermit', name: '宝剑·隐者', suit: CardSuit.SWORDS, rank: 309,
-    description: "打出：占卜己方的一张牌，选择：将其置入对方的抽牌堆顶，直接将其弃置，或抽取之。",
     keywords: [Keyword.SCRY],
     onReveal: (ctx) => {
         ctx.setGameState(prev => {

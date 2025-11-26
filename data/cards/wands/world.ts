@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { modifyPlayer, getOpponentId } from '../../../services/actions';
 
 export const WANDS_WORLD: CardDefinition = {
     id: 'wands-world', name: '权杖·世界', suit: CardSuit.WANDS, rank: 221,
-    description: "弃置：置于对方的弃牌堆顶。\n插入(亮牌前)：替身。将此牌置于己方的牌之上，替原本的卡牌承受效果。当该效果触发后，弃置此牌。",
     keywords: [Keyword.SUBSTITUTE],
     onDiscard: (ctx) => {
         const oppId = getOpponentId(ctx.sourcePlayerId);

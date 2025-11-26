@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { modifyPlayer, drawCards, getOpponentId, addMarkToCard, putCardInDeck } from '../../../services/actions';
 
 export const CUPS_FOOL: CardDefinition = {
     id: 'cups-fool', name: '圣杯·愚者', suit: CardSuit.CUPS, rank: 100,
-    // Description loaded from data/descriptions.ts
     keywords: [Keyword.IMPRINT, Keyword.SHUFFLE],
     onDraw: (ctx) => {
         ctx.setGameState(prev => ({

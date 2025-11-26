@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { modifyPlayer, discardCards } from '../../../services/actions';
 
 export const CUPS_STAR: CardDefinition = {
     id: 'cups-star', name: '圣杯·星星', suit: CardSuit.CUPS, rank: 117,
-    description: "抽到：若手牌中有“圣杯·太阳”或“圣杯·月亮”，打出之。否则选择是否将该牌置于己方抽牌堆底；若否，弃置此牌。",
     keywords: [],
     onDraw: (ctx) => {
         const hand = ctx.gameState[ctx.sourcePlayerId===1?'player1':'player2'].hand;

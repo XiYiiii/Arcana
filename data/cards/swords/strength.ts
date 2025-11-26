@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { modifyPlayer } from '../../../services/actions';
 
 export const SWORDS_STRENGTH: CardDefinition = {
     id: 'swords-strength', name: '宝剑·力量', suit: CardSuit.SWORDS, rank: 308,
-    description: "打出：下一回合Atk+2。\n弃置：下一回合Atk-1。",
     keywords: [],
     onReveal: (ctx) => {
         // Queue positive buff for next turn

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef } from 'react';
 import { Card } from '../types';
 import { SUIT_COLORS, SUIT_ICONS, KEYWORD_DESCRIPTIONS, KEYWORD_DISPLAY_NAMES } from '../constants';
@@ -26,7 +24,6 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   const [showTooltip, setShowTooltip] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Increased size by 20%: w-40(160px) -> w-48(192px), h-[180px] -> h-[216px]
   const wrapperClasses = "relative w-48 h-[216px] flex-shrink-0 transition-all duration-300 select-none group perspective-1000";
   
   const stateClasses = isSelected 
@@ -42,7 +39,6 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   };
 
   if (!card) {
-    // Increased empty slot size by 20%: w-[110px]->w-[132px], h-[160px]->h-[192px]
     return (
       <div className={`${wrapperClasses} h-[192px] w-[132px] border-2 border-dashed border-stone-700 rounded-xl flex items-center justify-center bg-stone-800/50 text-stone-500 backdrop-blur-sm`}>
         <span className="text-[10px] font-serif tracking-widest opacity-50">空</span>
@@ -53,23 +49,29 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   const suitColor = SUIT_COLORS[card.suit] || "text-stone-400";
   const suitIcon = SUIT_ICONS[card.suit] || "?";
 
-  // Render text with keyword highlighting
+  // Render text looking for [Keyword] pattern
   const renderTextContent = (text: string) => {
-     const keywordPattern = new RegExp(`(${Object.values(KEYWORD_DISPLAY_NAMES).join('|')})`, 'g');
-     const parts = text.split(keywordPattern);
+     // Split by [ANYTHING]
+     const parts = text.split(/(\[.*?\])/g);
      return parts.map((part, i) => {
-        if (Object.values(KEYWORD_DISPLAY_NAMES).includes(part)) {
-           return <span key={i} className="font-extrabold text-amber-200 border-b-[1px] border-amber-500/40 mx-[1px]">{part}</span>;
+        if (part.startsWith('[') && part.endsWith(']')) {
+           const content = part.slice(1, -1);
+           // Check if it's a known keyword or specific term we want to highlight
+           if (Object.values(KEYWORD_DISPLAY_NAMES).includes(content) || ['标记', '场地', '任务'].includes(content)) {
+               return <span key={i} className="font-extrabold text-amber-200 border-b-[1px] border-amber-500/40 mx-[1px]">{content}</span>;
+           }
+           // Fallback for unknown bracketed text
+           return <span key={i} className="font-bold text-stone-300">{content}</span>;
         }
         return <span key={i}>{part}</span>;
      });
   };
 
-  // Parse and structure the description with hanging indents for tags
+  // Parse and structure the description
   const renderDescription = (text: string) => {
-     // Split by tags like 【打出】, using lookahead to keep the delimiter.
-     // Also split by (场地...), (标记...), (任务...) to ensure they are treated as separate blocks.
-     const blocks = text.split(/(?=【)|(?=\(场地)|(?=\(标记)|(?=\(任务)/g);
+     // Split by tags like 【打出】, 【标记】, etc.
+     // Adjusted regex to capture 【...】 blocks
+     const blocks = text.split(/(?=【)/g);
 
      return blocks.map((block, i) => {
         // Match structure: 【Tag】 Content
@@ -83,8 +85,6 @@ export const CardComponent: React.FC<CardComponentProps> = ({
 
            // Check for 【插入(Phase)】 format
            const instantMatch = tagRaw.match(/^【插入[\(（](.*?)[\)）]】$/);
-           // Check for 【印记(Name)】 format
-           const markMatch = tagRaw.match(/^【印记[\(（](.*?)[\)）]】$/);
            
            if (instantMatch) {
                const phase = instantMatch[1];
@@ -94,30 +94,43 @@ export const CardComponent: React.FC<CardComponentProps> = ({
                        <span className="text-[6px] font-bold text-purple-200 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-90">({phase})</span>
                    </div>
                );
-           } else if (markMatch) {
-               const markName = markMatch[1];
-               tagNode = (
-                   <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-slate-800 rounded-sm px-0.5 py-[1px] border border-slate-600 shadow-sm min-w-[24px] mt-[1px]">
-                       <span className="font-black text-slate-200 text-[9px] leading-none">印记</span>
-                       <span className="text-[6px] font-bold text-slate-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({markName})</span>
-                   </div>
-               );
            } else {
                // Standard tags
                const tagName = tagRaw.replace(/[【】]/g, '');
-               const tagColors: Record<string, string> = {
-                   '打出': 'text-amber-100 bg-amber-900 border-amber-800',
-                   '抽到': 'text-blue-100 bg-blue-900 border-blue-800',
-                   '弃置': 'text-stone-200 bg-stone-700 border-stone-600',
-                   '被动': 'text-emerald-100 bg-emerald-900 border-emerald-800',
-               };
-               const styleClass = tagColors[tagName] || 'text-stone-200 bg-stone-700 border-stone-600';
                
-               tagNode = (
-                 <span className={`font-black shrink-0 mr-1 select-none text-[9px] px-0.5 py-[0px] rounded border shadow-sm mt-[1px] ${styleClass}`}>
-                    {tagName}
-                 </span>
-               );
+               if (tagName === '场地') {
+                    tagNode = (
+                        <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-emerald-950 rounded-sm px-0.5 py-[1px] border border-emerald-800 shadow-sm min-w-[24px] mt-[1px]">
+                            <span className="font-black text-emerald-200 text-[9px] leading-none">场地</span>
+                        </div>
+                    );
+               } else if (tagName === '任务') {
+                    tagNode = (
+                        <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-amber-950 rounded-sm px-0.5 py-[1px] border border-amber-800 shadow-sm min-w-[24px] mt-[1px]">
+                            <span className="font-black text-amber-200 text-[9px] leading-none">任务</span>
+                        </div>
+                    );
+               } else if (tagName === '标记') {
+                    tagNode = (
+                        <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-slate-800 rounded-sm px-0.5 py-[1px] border border-slate-600 shadow-sm min-w-[24px] mt-[1px]">
+                            <span className="font-black text-slate-200 text-[9px] leading-none">标记</span>
+                        </div>
+                    );
+               } else {
+                   const tagColors: Record<string, string> = {
+                       '打出': 'text-amber-100 bg-amber-900 border-amber-800',
+                       '抽到': 'text-blue-100 bg-blue-900 border-blue-800',
+                       '弃置': 'text-stone-200 bg-stone-700 border-stone-600',
+                       '被动': 'text-emerald-100 bg-emerald-900 border-emerald-800',
+                   };
+                   const styleClass = tagColors[tagName] || 'text-stone-200 bg-stone-700 border-stone-600';
+                   
+                   tagNode = (
+                     <span className={`font-black shrink-0 mr-1 select-none text-[9px] px-0.5 py-[0px] rounded border shadow-sm mt-[1px] ${styleClass}`}>
+                        {tagName}
+                     </span>
+                   );
+               }
            }
 
            return (
@@ -128,63 +141,6 @@ export const CardComponent: React.FC<CardComponentProps> = ({
            );
         }
         
-        // Handle Field description lines that start with (场地...)
-        const fieldMatch = block.trim().match(/^\(场地[“"](.*?)[”"]\)(.*)/);
-        if (fieldMatch) {
-            const fieldName = fieldMatch[1];
-            const content = fieldMatch[2].trim();
-            const tagNode = (
-               <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-emerald-950 rounded-sm px-0.5 py-[1px] border border-emerald-800 shadow-sm min-w-[24px] mt-[1px]">
-                   <span className="font-black text-emerald-200 text-[9px] leading-none">场地</span>
-                   <span className="text-[6px] font-bold text-emerald-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({fieldName})</span>
-               </div>
-            );
-            return (
-              <div key={i} className="flex items-start mb-1 last:mb-0">
-                 {tagNode}
-                 <span className="text-stone-300 text-[10px] leading-tight flex-1 whitespace-pre-wrap pt-[1px] font-medium break-all">{renderTextContent(content)}</span>
-              </div>
-            );
-        }
-
-        // Handle Quest description lines that start with (任务...)
-        const questMatch = block.trim().match(/^\(任务[“"](.*?)[”"]\)(.*)/);
-        if (questMatch) {
-            const questName = questMatch[1];
-            const content = questMatch[2].trim();
-            const tagNode = (
-               <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-amber-950 rounded-sm px-0.5 py-[1px] border border-amber-800 shadow-sm min-w-[24px] mt-[1px]">
-                   <span className="font-black text-amber-200 text-[9px] leading-none">任务</span>
-                   <span className="text-[6px] font-bold text-amber-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({questName})</span>
-               </div>
-            );
-            return (
-              <div key={i} className="flex items-start mb-1 last:mb-0">
-                 {tagNode}
-                 <span className="text-stone-300 text-[10px] leading-tight flex-1 whitespace-pre-wrap pt-[1px] font-medium break-all">{renderTextContent(content)}</span>
-              </div>
-            );
-        }
-        
-        // Mark description lines that start with (标记...)
-        const simpleMarkMatch = block.trim().match(/^\(标记[“"](.*?)[”"]\)(.*)/);
-        if (simpleMarkMatch) {
-            const markName = simpleMarkMatch[1];
-            const content = simpleMarkMatch[2].trim();
-            const tagNode = (
-               <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-slate-800 rounded-sm px-0.5 py-[1px] border border-slate-600 shadow-sm min-w-[24px] mt-[1px]">
-                   <span className="font-black text-slate-200 text-[9px] leading-none">印记</span>
-                   <span className="text-[6px] font-bold text-slate-400 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-75 max-w-[40px] overflow-hidden text-ellipsis">({markName})</span>
-               </div>
-            );
-            return (
-              <div key={i} className="flex items-start mb-1 last:mb-0">
-                 {tagNode}
-                 <span className="text-stone-300 text-[10px] leading-tight flex-1 whitespace-pre-wrap pt-[1px] font-medium break-all">{renderTextContent(content)}</span>
-              </div>
-            );
-        }
-
         // Fallback for text without tags
         if (!block.trim()) return null;
         return <div key={i} className="mb-1 last:mb-0 text-stone-400 text-[9px] italic leading-tight whitespace-pre-wrap border-l border-stone-600 pl-1.5 break-all">{renderTextContent(block)}</div>;
@@ -221,21 +177,25 @@ export const CardComponent: React.FC<CardComponentProps> = ({
 
   const innerContent = isFaceUp ? (
     <div className={`relative w-full h-full rounded-lg overflow-hidden flex flex-col shadow-card transition-transform duration-300 bg-stone-800
-      ${disabled || card.isLocked ? 'opacity-80 grayscale-[0.8] cursor-not-allowed' : 'cursor-pointer'}`}>
+      ${disabled && !card.isLocked ? 'opacity-80 grayscale-[0.8] cursor-not-allowed' : 'cursor-pointer'}
+      ${card.isLocked ? 'cursor-not-allowed' : ''}
+    `}>
       
       {/* Border Overlay */}
-      <div className={`absolute inset-0 border-[2px] rounded-lg pointer-events-none z-20 ${isSelected ? 'border-amber-500' : 'border-stone-600'}`}></div>
+      <div className={`absolute inset-0 border-[2px] rounded-lg pointer-events-none z-20 ${card.isLocked ? 'border-red-500/70' : isSelected ? 'border-amber-500' : 'border-stone-600'}`}></div>
       
       {/* LOCK OVERLAY */}
       {card.isLocked && (
-          <div className="absolute inset-0 bg-stone-950/60 z-30 flex items-center justify-center backdrop-blur-[2px]">
-              <div className="bg-stone-900 border-2 border-red-500 rounded-full w-12 h-12 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.5)]">
-                  <span className="text-2xl drop-shadow-md">🔒</span>
-              </div>
+          <div className="absolute inset-0 bg-stone-950/40 z-30 flex items-center justify-center backdrop-blur-[0px]">
+              <div className="absolute top-2 right-2 text-2xl drop-shadow-md animate-bounce">🔒</div>
+              <div className="absolute inset-0 border-2 border-red-500/30 rounded-lg pointer-events-none"></div>
+              {/* Crossed Chains Effect */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-2 bg-stone-900/80 rotate-45 border-y border-stone-600"></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-2 bg-stone-900/80 -rotate-45 border-y border-stone-600"></div>
           </div>
       )}
 
-      {/* Header - OPAQUE BACKGROUND */}
+      {/* Header */}
       <div className="relative bg-stone-900 text-stone-200 p-1.5 pb-2 z-10 flex justify-between items-start border-b border-stone-700 shadow-md">
         <div className="flex flex-col w-full pr-6">
             <span className="font-serif font-bold text-[9px] text-stone-500 tracking-widest uppercase leading-none mb-0.5">No. {card.rank}</span>
@@ -251,7 +211,7 @@ export const CardComponent: React.FC<CardComponentProps> = ({
         {suitIcon}
       </div>
 
-      {/* Description Area - CUSTOM SCROLLBAR & NO HORIZONTAL SCROLL */}
+      {/* Description Area */}
       <div className="relative flex-grow p-2 z-10 overflow-y-auto overflow-x-hidden pr-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-stone-600 [&::-webkit-scrollbar-thumb]:rounded-full">
         {renderDescription(card.description)}
       </div>
@@ -272,7 +232,7 @@ export const CardComponent: React.FC<CardComponentProps> = ({
     </div>
   ) : (
     <div className={`w-full h-full rounded-lg border-[2px] border-stone-700 bg-stone-900 shadow-card relative overflow-hidden group ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
-       {/* Card Back Pattern - OPAQUE */}
+       {/* Card Back Pattern */}
        <div className="absolute inset-0 bg-stone-900"></div>
        <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
        
@@ -291,8 +251,9 @@ export const CardComponent: React.FC<CardComponentProps> = ({
        
        {/* Lock Indicator on Back */}
        {card.isLocked && (
-          <div className="absolute inset-0 bg-stone-950/60 z-30 flex items-center justify-center backdrop-blur-[1px]">
-               <span className="text-2xl">🔒</span>
+          <div className="absolute inset-0 bg-stone-950/40 z-30 flex items-center justify-center backdrop-blur-[0px]">
+               <span className="text-2xl drop-shadow-md">🔒</span>
+               <div className="absolute inset-0 border-2 border-red-500/30 rounded-lg pointer-events-none"></div>
           </div>
        )}
        

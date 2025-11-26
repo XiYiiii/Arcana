@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { addQuest, getOpponentId, discardCards } from '../../../services/actions';
 
 export const SWORDS_TEMPERANCE: CardDefinition = {
     id: 'swords-temperance', name: '宝剑·节制', suit: CardSuit.SWORDS, rank: 314,
-    description: "打出：己方获得任务“宝剑·节制”。\n弃置：随机弃置对方一张手牌。\n(任务“宝剑·节制”)弃置八张牌以完成此任务。任务完成时，这局对战中己方手牌上限+1。",
     keywords: [Keyword.QUEST],
     onReveal: (ctx) => {
         addQuest(ctx, ctx.sourcePlayerId, {

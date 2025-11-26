@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, InstantWindow } from '../../../types';
 import { modifyPlayer, discardField, damagePlayer, getOpponentId, drawCards } from '../../../services/actions';
 
 export const PENTACLES_JUSTICE: CardDefinition = {
     id: 'pentacles-justice', name: '星币·正义', suit: CardSuit.PENTACLES, rank: 411,
-    description: "【插入】(置牌前)弃置场上的场地，扣除己方2点Hp。\n【插入】(亮牌前)反转对方打出的牌，扣除己方4点Hp。\n【插入】(亮牌后)无效对方打出的牌，扣除己方4点Hp。\n【插入】(特效后)抽两张牌，扣除己方2点Hp。",
     keywords: [],
     canInstant: () => true, // Valid in all windows
     onInstant: (ctx) => {

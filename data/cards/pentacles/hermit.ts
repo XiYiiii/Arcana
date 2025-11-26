@@ -1,15 +1,27 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { transformCard, getOpponentId } from '../../../services/actions';
 
 export const PENTACLES_HERMIT: CardDefinition = {
     id: 'pentacles-hermit', name: '星币·隐者', suit: CardSuit.PENTACLES, rank: 409,
-    description: "抽到：占卜己方两张牌。\n打出：占卜己方四张牌，挑选其中任意张，将其变化，抽牌堆顺序不变。\n弃置：占卜对方两张牌。",
     keywords: [Keyword.SCRY, Keyword.TRANSFORM],
     onDraw: (ctx) => {
         const deck = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].deck;
-        const top2 = deck.slice(0, 2).map(c=>c.name).join(', ');
-        ctx.log(`【星币·隐者】占卜己方：${top2 || '无牌'}`);
+        const top2 = deck.slice(0, 2);
+        
+        ctx.log(`【星币·隐者】正在进行占卜...`);
+        
+        ctx.setGameState(prev => ({
+            ...prev!,
+            interaction: {
+                id: `pentacles-hermit-scry-${Date.now()}`,
+                playerId: ctx.sourcePlayerId,
+                title: "星币·隐者 - 占卜",
+                description: "查看到牌堆顶的卡牌：",
+                inputType: 'CARD_SELECT',
+                cardsToSelect: top2,
+                options: [{label: "确定", action: () => ctx.setGameState(s => s ? ({...s, interaction: null}) : null)}],
+            }
+        }));
     },
     onReveal: (ctx) => {
         ctx.setGameState(prev => {

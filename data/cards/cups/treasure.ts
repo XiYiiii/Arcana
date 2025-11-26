@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, getOpponentId, drawCards } from '../../../services/actions';
 
 export const TREASURE_CUPS: CardDefinition = {
   id: 'treasure-cups', name: '宝藏·圣杯', suit: CardSuit.TREASURE, rank: 52, 
-  // Description loaded from data/descriptions.ts
   keywords: [Keyword.REVERSE, Keyword.INVALIDATE, Keyword.TREASURE],
   isTreasure: true, canSet: true,
   onResolveStatus: (ctx) => {

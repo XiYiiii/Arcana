@@ -42,7 +42,7 @@ export const KEYWORD_DISPLAY_NAMES: Record<Keyword, string> = {
   [Keyword.INVALIDATE]: "无效",
   [Keyword.REVERSE]: "反转",
   [Keyword.TREASURE]: "宝藏",
-  [Keyword.IMPRINT]: "印记",
+  [Keyword.IMPRINT]: "标记",
   [Keyword.SUBSTITUTE]: "替身",
   [Keyword.PIERCE]: "穿透",
   [Keyword.SHUFFLE]: "打乱",

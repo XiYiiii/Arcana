@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, addQuest } from '../../../services/actions';
 
 export const WANDS_STAR: CardDefinition = {
     id: 'wands-star', name: '权杖·星星', suit: CardSuit.WANDS, rank: 217,
-    description: "打出：占卜己方的一张牌，选择是否将其与“权杖·月亮”或“权杖·太阳”交换（若这两张牌在抽牌堆中）。\n弃置：己方获得任务“权杖·星星”。\n(任务“权杖·星星”)手牌中同时有“太阳”和“月亮”时完成。任务完成时，选择任意一张“太阳”、“月亮”、“星星”，直接置入手牌。",
     keywords: [Keyword.SCRY, Keyword.QUEST],
     onReveal: (ctx) => {
         ctx.setGameState(prev => ({

@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { modifyPlayer, getOpponentId } from '../../../services/actions';
 
 export const WANDS_JUDGMENT: CardDefinition = {
     id: 'wands-judgment', name: '权杖·审判', suit: CardSuit.WANDS, rank: 220,
-    description: "打出：弃置对手手牌中的“倒吊人”、“恶魔”、“高塔”（若有）。\n弃置：弃置对手手牌中的“正义”（若有）。",
     keywords: [],
     onReveal: (ctx) => {
         const oppId = getOpponentId(ctx.sourcePlayerId);

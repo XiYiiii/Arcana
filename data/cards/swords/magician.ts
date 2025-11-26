@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { damagePlayer, drawCards, addMarkToCard, getOpponentId } from '../../../services/actions';
 
 export const SWORDS_MAGICIAN: CardDefinition = {
     id: 'swords-magician', name: '宝剑·魔术师', suit: CardSuit.SWORDS, rank: 301,
-    description: "打出：抽一张牌，标记为“宝剑·魔术师”，令对方猜测这张牌的花色。若对方猜对，则对己方造成[2*Atk]点伤害，否则对对方造成[Atk]点伤害。\n印记(宝剑·魔术师)：亮牌时，这张牌视为任意花色。",
     keywords: [Keyword.IMPRINT],
     onReveal: (ctx) => {
         drawCards(ctx, ctx.sourcePlayerId, 1);

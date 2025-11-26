@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, drawCards, discardCards, addMarkToCard, getOpponentId } from '../../../services/actions';
 
 export const SWORDS_LOVERS: CardDefinition = {
     id: 'swords-lovers', name: '宝剑·恋人', suit: CardSuit.SWORDS, rank: 306,
-    description: "抽到：标记双方的各一张手牌为“宝剑·恋人”，弃置此牌，抽一张牌。\n印记(宝剑·恋人)：这张牌在手上时，每对对方造成1次伤害，对己方造成1点伤害。",
     keywords: [Keyword.IMPRINT],
     onDraw: (ctx) => {
         const oppId = getOpponentId(ctx.sourcePlayerId);

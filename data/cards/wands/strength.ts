@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword, Card } from '../../../types';
 import { modifyPlayer, damagePlayer, drawCards, getOpponentId } from '../../../services/actions';
 
 export const WANDS_STRENGTH: CardDefinition = {
     id: 'wands-strength', name: '权杖·力量', suit: CardSuit.WANDS, rank: 208,
-    description: "打出：抽取3张牌并无效后丢弃。每有1张“圣杯”弃1张牌；每有1张“宝剑”造成2点伤害；每有1张“权杖”抽1张牌；每有1张“星币”由对方交换1张手牌。",
     keywords: [Keyword.INVALIDATE],
     onReveal: (ctx) => {
        const oppId = getOpponentId(ctx.sourcePlayerId);

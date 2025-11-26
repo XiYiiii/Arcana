@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { modifyPlayer, drawCards, discardCards } from '../../../services/actions';
 
 export const WANDS_HANGEDMAN: CardDefinition = {
     id: 'wands-hangedman', name: '权杖·倒吊人', suit: CardSuit.WANDS, rank: 212,
-    // Description loaded from data/descriptions.ts
     keywords: [],
     onReveal: (ctx) => {
         ctx.setGameState(prev => ({

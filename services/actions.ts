@@ -1,5 +1,7 @@
 
 
+
+
 import { EffectContext, PlayerState, GameState, Card, CardSuit, Quest, CardDefinition, VisualEvent } from '../types';
 import { shuffleDeck, getArcanaNumber } from './gameUtils';
 import { CARD_DEFINITIONS } from '../data/cards';
@@ -15,6 +17,27 @@ export const getTargetId = (ctx: EffectContext, intendedTargetId: number): numbe
   if (intendedTargetId === ctx.sourcePlayerId) return oppId;
   if (intendedTargetId === oppId) return ctx.sourcePlayerId;
   return intendedTargetId; 
+};
+
+// Check Pentacles Wheel activation condition (MyHP >= 2 * OppHP)
+const checkPentaclesWheelActivation = (prev: GameState): GameState => {
+    if (!prev.field || !prev.field.card.name.includes('星币·命运之轮')) return prev;
+    
+    const ownerId = prev.field.ownerId;
+    const oppId = getOpponentId(ownerId);
+    
+    const ownerHP = ownerId === 1 ? prev.player1.hp : prev.player2.hp;
+    const oppHP = oppId === 1 ? prev.player1.hp : prev.player2.hp;
+    
+    const shouldBeActive = ownerHP >= 2 * oppHP;
+    
+    if (prev.field.active !== shouldBeActive) {
+        return {
+            ...prev,
+            field: { ...prev.field, active: shouldBeActive }
+        };
+    }
+    return prev;
 };
 
 export const modifyPlayer = (
@@ -57,10 +80,13 @@ export const modifyPlayer = (
         }
     }
     
-    return {
+    const intermediateState = {
       ...prev,
       [key]: newState
     };
+
+    // Check Field Activation after stats change
+    return checkPentaclesWheelActivation(intermediateState);
   });
 };
 
@@ -203,12 +229,14 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
         else p2State.discardPile = finalP2Discard;
     }
 
-    return {
+    const intermediateState = {
       ...prev,
       player1: p1State,
       player2: p2State,
       field: finalField
     };
+
+    return checkPentaclesWheelActivation(intermediateState);
   });
   
   if (amount > 0) {
@@ -640,7 +668,7 @@ export const destroyCard = (ctx: EffectContext, cardInstanceId: string) => {
     });
 };
 
-export const lockRandomCard = (ctx: EffectContext, targetId: number, count: number) => {
+export const lockRandomCard = (ctx: EffectContext, targetId: number, count: number, duration: number = 1) => {
     const finalTargetId = getTargetId(ctx, targetId);
     ctx.setGameState(prev => {
         if (!prev) return null;
@@ -667,9 +695,12 @@ export const lockRandomCard = (ctx: EffectContext, targetId: number, count: numb
             availableIndices.splice(r, 1);
         }
 
-        const newHand = p.hand.map((c, i) => indicesToLock.includes(i) ? { ...c, isLocked: true } : c);
+        // Apply lock with duration
+        // Note: duration determines how many 'cleanup' cycles (Discard Phase) the lock persists.
+        // A duration of 1 means it will be removed at the NEXT cleanup (usually this turn's end).
+        const newHand = p.hand.map((c, i) => indicesToLock.includes(i) ? { ...c, isLocked: true, lockedTurns: duration } : c);
         const lockedCount = indicesToLock.length;
-        if (lockedCount > 0) ctx.log(`[锁定] ${p.name} 的 ${lockedCount} 张牌被锁定了。`);
+        if (lockedCount > 0) ctx.log(`[锁定] ${p.name} 的 ${lockedCount} 张牌被锁定了 (持续${duration}轮)。`);
 
         return {
             ...prev,
@@ -710,7 +741,7 @@ export const discardField = (ctx: EffectContext) => {
     });
 };
 
-export const setField = (ctx: EffectContext, card: Card) => {
+export const setField = (ctx: EffectContext, card: Card, activateNow: boolean = false) => {
     // First discard existing field if any
     discardField(ctx);
 
@@ -728,16 +759,18 @@ export const setField = (ctx: EffectContext, card: Card) => {
 
         ctx.log(`[场地] 设置为: ${card.name}`);
 
-        return {
+        const intermediateState = {
             ...prev,
             [key]: p,
             field: {
                 card,
                 ownerId: ctx.sourcePlayerId,
                 counter: 0,
-                active: true
+                active: activateNow // Use parameter to decide activation
             }
         };
+        
+        return checkPentaclesWheelActivation(intermediateState);
     });
 };
 
@@ -857,22 +890,25 @@ export const checkGameOver = (ctx: EffectContext) => {
         let p1Win = prev.player2.hp <= 0;
         let p2Win = prev.player1.hp <= 0;
 
-        if (prev.field && prev.field.active && prev.field.card.name.includes('星币·命运之轮')) {
-            const owner = prev.field.ownerId;
+        // Ensure active state is correct
+        const intermediate = checkPentaclesWheelActivation(prev);
+
+        if (intermediate.field && intermediate.field.active && intermediate.field.card.name.includes('星币·命运之轮')) {
+            const owner = intermediate.field.ownerId;
             if (owner === 1) {
-                // P1 Victory if P1 HP <= 0
-                if (prev.player1.hp <= 0) p1Win = true;
+                // P1 Victory if P1 HP <= 0 (Self HP <= 0)
+                if (intermediate.player1.hp <= 0) p1Win = true;
             } else {
-                // P2 Victory if P2 HP <= 0
-                if (prev.player2.hp <= 0) p2Win = true;
+                // P2 Victory if P2 HP <= 0 (Self HP <= 0)
+                if (intermediate.player2.hp <= 0) p2Win = true;
             }
         }
 
         if(p1Win || p2Win) {
             let msg = p1Win && p2Win ? "双方平局！" : p1Win ? "玩家 1 获胜！" : "玩家 2 获胜！";
-            return { ...prev, phase: 'GAME_OVER' as any, logs: [msg, ...prev.logs] };
+            return { ...intermediate, phase: 'GAME_OVER' as any, logs: [msg, ...intermediate.logs] };
         }
-        return prev;
+        return intermediate;
     });
 };
 
@@ -1159,36 +1195,7 @@ export const clash = (ctx: EffectContext, onResolve: (ctx: EffectContext, result
         
         const p2Res = p1Res === 'WIN' ? 'LOSE' : p1Res === 'LOSE' ? 'WIN' : 'TIE';
 
-        // Helper to finalize card destination
-        const finalize = (pid: number, c: Card, dest: 'HAND' | 'DISCARD' | 'LOCK_HAND', logSuffix: string) => {
-             const key = pid === 1 ? 'player1' : 'player2';
-             const isLock = dest === 'LOCK_HAND';
-             const isHand = dest === 'HAND' || isLock;
-             
-             modifyPlayer(ctx, pid, p => ({
-                 ...p,
-                 hand: isHand ? [...p.hand, { ...c, isLocked: isLock ? true : c.isLocked }] : p.hand,
-                 discardPile: dest === 'DISCARD' ? [...p.discardPile, c] : p.discardPile
-             }));
-
-             if (isHand) {
-                 if (c.onDraw) {
-                     // Trigger OnDraw manually since we bypassed drawCards
-                     const subCtx = { ...ctx, sourcePlayerId: pid, card: c }; // Hack context
-                     // We can't easily push to pendingEffects inside modifyPlayer without complex piping
-                     // So we queue it or execute immediately? Execute immediately is risky for recursion.
-                     // But PendingEffects is safe.
-                     ctx.setGameState(s => s ? ({...s, pendingEffects: [...s.pendingEffects, { type: 'ON_DRAW', card: c, playerId: pid }]}) : null);
-                 }
-             } else {
-                 if (c.onDiscard) {
-                     ctx.setGameState(s => s ? ({...s, pendingEffects: [...s.pendingEffects, { type: 'ON_DISCARD', card: c, playerId: pid }]}) : null);
-                 }
-             }
-        };
-
         // Call callback to let specific card decide logic
-        // We pass the raw cards, callback calls finalize
         const myId = ctx.sourcePlayerId;
         const myCard = myId === 1 ? p1Card : p2Card;
         const oppCard = myId === 1 ? p2Card : p1Card;

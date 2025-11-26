@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit, Keyword, Card } from '../../../types';
 import { modifyPlayer, getOpponentId, seizeCard } from '../../../services/actions';
 
 export const TREASURE_WANDS: CardDefinition = {
   id: 'treasure-wands', name: '宝藏·权杖', suit: CardSuit.TREASURE, rank: 53,
-  // Description loaded from data/descriptions.ts
   keywords: [Keyword.SEIZE, Keyword.TREASURE],
   isTreasure: true, canSet: true,
   onReveal: (ctx) => {

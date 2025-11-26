@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { modifyPlayer, damagePlayer, getOpponentId } from '../../../services/actions';
 
 export const CUPS_HANGEDMAN: CardDefinition = {
     id: 'cups-hangedman', name: '圣杯·倒吊人', suit: CardSuit.CUPS, rank: 112,
-    // Description handled by data/descriptions.ts
     keywords: [Keyword.INVALIDATE],
     onReveal: (ctx) => {
         const hp = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].hp;

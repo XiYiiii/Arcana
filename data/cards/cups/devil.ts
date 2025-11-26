@@ -1,11 +1,8 @@
-
-
 import { CardDefinition, CardSuit } from '../../../types';
 import { damagePlayer, drawCards } from '../../../services/actions';
 
 export const CUPS_DEVIL: CardDefinition = {
     id: 'cups-devil', name: '圣杯·恶魔', suit: CardSuit.CUPS, rank: 115,
-    description: "打出：随机抽取0~2张牌，每抽一张扣除2生命。",
     keywords: [],
     onReveal: (ctx) => {
         const count = Math.floor(Math.random() * 3); // 0, 1, or 2

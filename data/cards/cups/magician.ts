@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { drawCards, addMarkToCard, getOpponentId, discardCards } from '../../../services/actions';
 
 export const CUPS_MAGICIAN: CardDefinition = {
     id: 'cups-magician', name: '圣杯·魔术师', suit: CardSuit.CUPS, rank: 101,
-    description: "抽到：抽1张牌并标记为“圣杯·魔术师”。将其与此牌打混令对手猜测。若猜错，己方保留该牌；否则己方弃置该牌。\n印记(圣杯·魔术师)：这张牌的特效触发两次。",
     keywords: [Keyword.IMPRINT],
     onDraw: (ctx) => {
         drawCards(ctx, ctx.sourcePlayerId, 1);

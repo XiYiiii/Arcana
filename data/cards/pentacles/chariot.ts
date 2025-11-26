@@ -1,10 +1,8 @@
-
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { clash, modifyPlayer, shufflePlayerDeck } from '../../../services/actions';
 
 export const PENTACLES_CHARIOT: CardDefinition = {
     id: 'pentacles-chariot', name: '星币·战车', suit: CardSuit.PENTACLES, rank: 407,
-    description: "打出：从双方抽牌堆顶端抽取一张牌并进行拼点，这两张牌都加入各自手牌。若双方点数相同则均被锁定，否则点数者所抽的牌被锁定。\n弃置：打乱双方抽牌堆。",
     keywords: [Keyword.CLASH, Keyword.LOCK, Keyword.SHUFFLE],
     onReveal: (ctx) => {
         clash(ctx, (c, result, myCard, oppCard) => {
