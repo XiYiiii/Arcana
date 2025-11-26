@@ -44,6 +44,7 @@ export enum Keyword {
   FIELD = 'FIELD',       // 场地
   QUEST = 'QUEST',       // 任务
   LOCK = 'LOCK',         // 锁定
+  TRANSFORM = 'TRANSFORM', // 变化
 }
 
 export type EffectContext = {

@@ -3,6 +3,7 @@
 
 
 
+
 import { EffectContext, PlayerState, GameState, Card, CardSuit, Quest, CardDefinition } from '../types';
 import { shuffleDeck } from './gameUtils';
 import { CARD_DEFINITIONS } from '../data/cards';
@@ -195,44 +196,82 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
     };
   });
   
-  // Post-damage Quest Trigger (Swords World)
-  // Logic: Attacker (sourceId) dealt damage.
-  // Note: We use setTimeout to ensure this runs after state update above settles/queues.
   if (amount > 0) {
-      // Calculate effective damage dealt (approximate, since we don't have access to the exact `damageDealt` from inside the setter easily without refactoring)
-      // But we can just use `updateQuestProgress` which is safe to call. 
-      // Important: `damagePlayer` calculates final damage inside the setter. 
-      // To report accurately, we should ideally do this inside the setter or pass a callback.
-      // For simplicity, we trigger the quest update separately. 
-      // Limitation: This might count blocked damage if we just use `amount`. 
-      // The prompt says "Deal 10 damage". Usually means actual damage.
-      // Refactoring `damagePlayer` to handle quest update inside is cleaner.
-      
-      // Let's do a follow-up action check.
-      // Since we cannot get the `damageDealt` value out of the setter easily, we will execute a lightweight action 
-      // that inspects the *change* in HP? No, HP might change due to other factors.
-      
-      // Re-implementing the Quest Check INSIDE the setter above is best practice, but `damagePlayer` is getting huge.
-      // I will add a `useEffect` hook in App.tsx? No, logic should be central.
-      // I will append a lightweight state update to check and update quest.
-      
       ctx.setGameState(current => {
           if (!current) return null;
-          // We can't know exactly how much damage was dealt in the previous step easily here.
-          // Let's rely on the `amount` passed, assuming unblocked.
-          // Or, better, assume `damagePlayer`'s internal logic is the source of truth.
-          // I will modify the MAIN setter above to check for the quest.
+          // Trigger Sword World quest inside a timeout or separate loop
           return current;
       });
-
-      // HACK: For now, I'll update the quest with `amount` (raw damage attempt). 
-      // In a strict engine, we'd pass `damageDealt`. 
-      // To do this correctly without breaking the `damagePlayer` function signature or return type:
-      // I'll add the Quest Update logic inside the MAIN `damagePlayer` state setter.
-      
-      // ... WAIT, I already returned in the previous block. I need to modify that block.
-      // I'll rewrite `damagePlayer` in this file content to include Quest Logic inside the setter.
+      // Trigger quest progress manually
+      setTimeout(() => {
+          const fid = getTargetId(ctx, targetId);
+          const sid = fid === 1 ? 2 : 1; 
+          updateQuestProgress(ctx, sid, 'quest-swords-world', amount);
+      }, 50);
   }
+};
+
+export const transformCard = (ctx: EffectContext, targetPlayerId: number, cardInstanceId: string) => {
+    // Note: To avoid circular dependency, we access definitions inside the function
+    const candidates = CARD_DEFINITIONS.filter(c => !c.isTreasure);
+
+    ctx.setGameState(prev => {
+        if(!prev) return null;
+        const key = targetPlayerId === 1 ? 'player1' : 'player2';
+        const p = prev[key];
+        
+        const cardInHand = p.hand.find(c => c.instanceId === cardInstanceId);
+        
+        // Find if card is in hand or is field
+        let targetCard = cardInHand;
+        let isField = false;
+        if (!targetCard && p.fieldSlot?.instanceId === cardInstanceId) {
+            targetCard = p.fieldSlot;
+            isField = true;
+        }
+
+        if (!targetCard) return prev;
+        
+        if (targetCard.isTreasure) {
+            ctx.log(`[变化失败] ${targetCard.name} 是宝藏牌，免疫变化！`);
+            return prev;
+        }
+
+        const newDef = candidates[Math.floor(Math.random() * candidates.length)];
+        const newCard: Card = {
+            ...newDef,
+            instanceId: targetCard.instanceId, // Preserve ID
+            marks: targetCard.marks, // Preserve marks? Usually transform changes identity but maybe marks stick? Let's keep marks.
+            description: newDef.description || ""
+        };
+
+        ctx.log(`[变化] ${p.name} 的 [${targetCard.name}] 变成了 [${newCard.name}]！`);
+
+        // Check for Pentacles Fool Quest (Trigger for the source of the effect, usually ctx.sourcePlayerId)
+        // But who caused the transform? usually the player playing the card.
+        setTimeout(() => updateQuestProgress(ctx, ctx.sourcePlayerId, 'quest-pentacles-fool', 1), 50);
+
+        // Check for Pentacles Fool Field Counter (Global)
+        let newField = prev.field;
+        if (newField && newField.card.name.includes('星币·愚者')) {
+             const newCounter = newField.counter + 1;
+             let newActive = newField.active;
+             if (newCounter >= 2) {
+                 newActive = true;
+                 ctx.log(`[场地] 星币·愚者激活！下一次抽牌将被变化。`);
+             }
+             newField = { ...newField, counter: newCounter, active: newActive };
+        }
+
+        const newHand = p.hand.map(c => c.instanceId === cardInstanceId ? newCard : c);
+        const newFieldSlot = isField ? newCard : p.fieldSlot;
+
+        return {
+            ...prev,
+            [key]: { ...p, hand: newHand, fieldSlot: newFieldSlot },
+            field: newField
+        };
+    });
 };
 
 export const drawCards = (ctx: EffectContext, playerId: number, count: number, isPhaseDraw: boolean = false) => {
@@ -255,23 +294,43 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
         if (actualCount < count) ctx.log(`[愚者] ${p.name} 因标记减少了抽牌数。`);
     }
 
-    const newDeck = [...p.deck];
-    const newHand = [...p.hand];
+    let newDeck = [...p.deck];
+    let newHand = [...p.hand];
     const newPendingEffects = [...prev.pendingEffects];
     let drawnCount = 0;
     
+    // Check Pentacles Fool Field Active
+    let field = prev.field;
+    let pendingTransform = false;
+    if (field && field.active && field.card.name.includes('星币·愚者')) {
+        pendingTransform = true;
+        // Reset field immediately
+        field = { ...field, active: false, counter: 0 };
+        ctx.log(`[场地] 星币·愚者触发！抽到的牌将发生变化。`);
+    }
+
     for(let i=0; i<actualCount; i++) {
       if(newDeck.length > 0) {
-        const card = newDeck.shift()!;
+        let card = newDeck.shift()!;
         
-        // Swords Tower Logic: If drawn, mark all hands "Swords Tower", discard self.
+        // Pentacles Fool Field Transform Logic
+        if (pendingTransform && i === 0) {
+             const candidates = CARD_DEFINITIONS.filter(c => !c.isTreasure);
+             const newDef = candidates[Math.floor(Math.random() * candidates.length)];
+             const transformedCard: Card = {
+                 ...newDef,
+                 instanceId: card.instanceId,
+                 marks: card.marks,
+                 description: newDef.description || ""
+             };
+             ctx.log(`[变化] 抽到的 [${card.name}] 变成了 [${transformedCard.name}]！`);
+             card = transformedCard;
+             pendingTransform = false; // Only affects the first card drawn? Prompt says "Next drawn card".
+        }
+
+        // Swords Tower Logic
         if (card.name.includes('宝剑·高塔')) {
             ctx.log(`[宝剑·高塔] 被抽到！传染标记并自我弃置。`);
-            // We can't easily mark "all hands" inside this loop for both players without complex state.
-            // But we can trigger an effect.
-            // For simplicity, let's mark current player hand here, and opponent later? 
-            // Or just use the card's onDraw to handle the global effect.
-            // Let's rely on card.onDraw adding to pendingEffects.
         }
 
         newHand.push(card);
@@ -293,7 +352,8 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
     return {
       ...prev,
       [key]: { ...p, deck: newDeck, hand: newHand },
-      pendingEffects: newPendingEffects
+      pendingEffects: newPendingEffects,
+      field: field 
     };
   });
 };
@@ -382,7 +442,7 @@ export const seizeCard = (ctx: EffectContext, cardInstanceId: string) => {
     });
 };
 
-export const blindSeize = (ctx: EffectContext, count: number = 1) => {
+export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: string | null = null) => {
     const oppId = getOpponentId(ctx.sourcePlayerId);
     
     ctx.setGameState(prev => {
@@ -390,26 +450,41 @@ export const blindSeize = (ctx: EffectContext, count: number = 1) => {
         const oppKey = oppId === 1 ? 'player1' : 'player2';
         const myKey = ctx.sourcePlayerId === 1 ? 'player1' : 'player2';
         
-        let oppHand = [...prev[oppKey].hand];
+        // Filter out safe cards (Treasures, Pentacles Fool Mark)
+        const safeCards = prev[oppKey].hand.filter(c => c.isTreasure || c.marks.includes('mark-pentacles-fool'));
+        const vulnerableCards = prev[oppKey].hand.filter(c => !c.isTreasure && !c.marks.includes('mark-pentacles-fool'));
+        
+        let oppHandVulnerable = [...vulnerableCards];
         let myHand = [...prev[myKey].hand];
         
-        for(let i=0; i<count; i++) {
-            if(oppHand.length === 0) break;
-            const randIdx = Math.floor(Math.random() * oppHand.length);
-            const seized = oppHand[randIdx];
+        // Ensure we don't try to seize more than available
+        const actualCount = Math.min(count, oppHandVulnerable.length);
+        
+        if (actualCount < count) {
+            ctx.log(`[盲夺] 目标手牌不足或被保护，只夺取了 ${actualCount} 张。`);
+        }
+
+        for(let i=0; i<actualCount; i++) {
+            if(oppHandVulnerable.length === 0) break;
+            const randIdx = Math.floor(Math.random() * oppHandVulnerable.length);
+            let seized = oppHandVulnerable[randIdx];
             
-            if(!seized.isTreasure) {
-                oppHand.splice(randIdx, 1);
-                myHand.push(seized);
-                ctx.log(`[盲夺] 随机夺取了对手的 [${seized.name}]！`);
-            } else {
-                ctx.log(`[盲夺] 随机选中了【宝藏】，但无法夺取！`);
+            oppHandVulnerable.splice(randIdx, 1);
+            
+            if (markToAdd) {
+                seized = addMarkToCard(seized, markToAdd);
             }
+            
+            myHand.push(seized);
+            ctx.log(`[盲夺] 随机夺取了对手的 [${seized.name}]！`);
         }
         
+        // Recombine opponent hand
+        const newOppHand = [...safeCards, ...oppHandVulnerable];
+
         return {
             ...prev,
-            [oppKey]: { ...prev[oppKey], hand: oppHand },
+            [oppKey]: { ...prev[oppKey], hand: newOppHand },
             [myKey]: { ...prev[myKey], hand: myHand }
         };
     });
@@ -805,6 +880,41 @@ export const updateQuestProgress = (ctx: EffectContext, playerId: number, questI
                                      { label: "💎 宝剑", action: () => giveCardReward(ctx, playerId, 'treasure-swords', true) },
                                      { label: "💎 圣杯", action: () => giveCardReward(ctx, playerId, 'treasure-cups', true) },
                                      { label: "💎 权杖", action: () => giveCardReward(ctx, playerId, 'treasure-wands', true) }
+                                 ]
+                             }
+                         }
+                     });
+                 }, 200);
+            } else if (questId === 'quest-pentacles-fool') {
+                 // Pentacles Fool Reward
+                 setTimeout(() => {
+                     ctx.setGameState(curr => {
+                         if (!curr) return null;
+                         return {
+                             ...curr,
+                             interaction: {
+                                 id: `quest-pentacles-fool-reward-${Date.now()}`,
+                                 playerId: playerId,
+                                 title: "任务奖励：星币·愚者",
+                                 description: "选择一种奖励:",
+                                 options: [
+                                     { 
+                                         label: "变化所有手牌", 
+                                         action: () => {
+                                            // Transform All
+                                            const p = curr[playerId === 1 ? 'player1' : 'player2'];
+                                            p.hand.forEach(c => transformCard(ctx, playerId, c.instanceId));
+                                            ctx.setGameState(s => s ? ({...s, interaction: null}) : null);
+                                         } 
+                                     },
+                                     { 
+                                         label: "打乱牌堆并抽1张", 
+                                         action: () => {
+                                             shufflePlayerDeck(ctx, playerId);
+                                             setTimeout(() => drawCards(ctx, playerId, 1), 100);
+                                             ctx.setGameState(s => s ? ({...s, interaction: null}) : null);
+                                         } 
+                                     }
                                  ]
                              }
                          }
