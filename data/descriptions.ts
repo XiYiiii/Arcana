@@ -61,4 +61,9 @@ export const CARD_DESCRIPTIONS: Record<string, string> = {
   'swords-hierophant': "【打出】标记手牌。\n【弃置】随机标记对手2张。\n【印记(宝剑·教皇)】打出伤敌[Atk]，弃置自伤[Atk]。",
   'swords-lovers': "【抽到】随机标记双方各1张，弃此牌抽1。\n【印记(宝剑·恋人)】伤敌时自伤1。",
   'swords-chariot': "【打出】从宝库中获取“宝藏·宝剑”。",
+  'swords-strength': "【打出】下一回合Atk+2。\n【弃置】下一回合Atk-1。",
+  'swords-hermit': "【打出】占卜己方一张牌，选择置入敌方堆顶、弃置或抽取。",
+  'swords-wheel': "【抽到】伤敌[Atk]，入敌手牌。\n【打出】伤敌[2*Atk]，入敌牌堆并打乱。",
+  'swords-justice': "【打出】敌手牌每多一张，伤敌1点。\n【弃置】随机抽取牌堆中“倒吊人”。",
+  'swords-hangedman': "【打出】本回伤敌自伤，并标记同等数量手牌。\n【印记(宝剑·倒吊人)】打出恢复2Hp。",
 };

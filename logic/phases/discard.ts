@@ -28,6 +28,7 @@ export const executeDiscardPhase = (
       const newDelayed = [];
       let extraDraw = 0;
       let hp = p.hp;
+      let atk = p.atk;
 
       p.delayedEffects.forEach(eff => {
           if (eff.turnsRemaining === 1) {
@@ -38,21 +39,10 @@ export const executeDiscardPhase = (
                   } else {
                       extraDraw += eff.amount;
                   }
-              }
-              // DISCARD effect logic is tricky as it forces discard next turn. 
-              // We don't have a mechanism to force discard *after* draw in current delayed struct easily
-              // without adding state. For now we assume user plays knowing they have fewer cards?
-              // Or we reduce MAX HAND SIZE temporarily? 
-              // For Hanged Man (Discard 2): We can just make them draw fewer? No, "Discard 2".
-              // Simplified: We will reduce hand size or let them discard in next discard phase.
-              // Wait, if we are in Discard Phase now, preparing for next turn.
-              // If I have Discard Debt, maybe I just draw fewer? No, that's different.
-              // Let's just ignore Discard debt for this iteration or treat it as "Draw -2" (which implies effectively having fewer cards).
-              if (eff.action === 'DISCARD') {
-                  // Hack: Negative draw to simulate loss of advantage
-                  // Real implementation needs "Forced Discard Phase" start of turn.
-                  // We'll treat it as -amount draw.
+              } else if (eff.action === 'DISCARD') {
                   extraDraw -= eff.amount;
+              } else if (eff.action === 'ATK_CHANGE') {
+                  atk += eff.amount;
               }
           } else {
               newDelayed.push({ ...eff, turnsRemaining: eff.turnsRemaining - 1 });
@@ -63,6 +53,7 @@ export const executeDiscardPhase = (
         state: {
           ...p,
           hp,
+          atk,
           fieldSlot: null,
           isFieldCardRevealed: false,
           discardPile: field ? [...p.discardPile, field] : p.discardPile, 
@@ -79,7 +70,8 @@ export const executeDiscardPhase = (
           preventHealing: false,
           hasLifesteal: false,
           damageReflection: false,
-          incomingDamageConversion: false
+          incomingDamageConversion: false,
+          swordsHangedManActive: false,
         },
         drawAmount: extraDraw
       };
@@ -88,8 +80,6 @@ export const executeDiscardPhase = (
     const p1Result = cleanup(prev.player1);
     const p2Result = cleanup(prev.player2);
 
-    // Apply delayed draw/discard results (clamped to 0 min draw handled in next phase? No, we do it here)
-    
     const processDelayedDraw = (p: PlayerState, amt: number) => {
         const newDeck = [...p.deck];
         const newHand = [...p.hand];
@@ -99,16 +89,10 @@ export const executeDiscardPhase = (
                 if(newDeck.length) newHand.push(newDeck.shift()!);
             }
         } else if (amt < 0) {
-            // Negative draw = Discard random? Or just start with fewer cards?
-            // "Discard 2". We'll remove random from hand to simulate forced discard.
             const discards = Math.abs(amt);
             for(let i=0; i<discards; i++) {
                 if(newHand.length > 0) {
                    const r = Math.floor(Math.random() * newHand.length);
-                   // Actually move to discard pile?
-                   // This function only returns new hand/deck. The outer cleanup set discardPile.
-                   // We need to update discardPile too if we discard here.
-                   // This refactor is getting messy. Let's just remove from hand.
                    newHand.splice(r, 1);
                 }
             }

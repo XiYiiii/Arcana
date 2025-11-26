@@ -1,4 +1,5 @@
 
+
 import { GamePhase, InstantWindow, EffectContext, Card, PendingEffect, Keyword } from '../../types';
 import { damagePlayer, modifyPlayer, getOpponentId, drawCards, destroyCard } from '../../services/actions';
 import { compareCards } from '../../services/gameUtils';
@@ -121,7 +122,7 @@ export const executeResolveEffects = async (
            await delay(DELAY_MS);
            continue; 
        }
-       // Consume flag if it wasn't triggered (valid play consumes the 'next card' check if it was supposed to be invalid)
+       // Consume flag if it wasn't triggered
        if (p.invalidateNextPlayedCard) {
             modifyPlayer(effCtx, pid, pl => ({ ...pl, invalidateNextPlayedCard: false }));
        }
@@ -129,9 +130,15 @@ export const executeResolveEffects = async (
        if (p.isReversed && !card.isTreasure) {
            addLog(`[反转] ${p.name} 的 [${card.name}] 效果将反转！`);
        }
+
+       // Mark Effect Check: Swords Hanged Man (Recover 2HP on play)
+       if (card.marks.includes('mark-swords-hangedman')) {
+          addLog(`[倒吊人] 标记触发！${p.name} 恢复 2 点生命。`);
+          modifyPlayer(effCtx, pid, pl => ({ ...pl, hp: pl.hp + 2 }));
+          await delay(200);
+       }
        
        if (card.onReveal) {
-          // Check for Effect Double triggers (Empress OR Cups Magician Mark)
           const isDouble = p.effectDoubleNext || card.marks.includes('mark-cups-magician');
           const times = isDouble ? 2 : 1;
           if (card.marks.includes('mark-cups-magician')) addLog(`[魔术师] 标记触发！效果发动两次。`);
@@ -146,7 +153,6 @@ export const executeResolveEffects = async (
           if (p.effectDoubleNext) modifyPlayer(effCtx, pid, pl => ({ ...pl, effectDoubleNext: false }));
        }
 
-       // Destroy checks (Death / World)
        if (card.marks.includes('mark-death') || card.keywords?.includes(Keyword.DESTROY)) {
            if(card.name.includes('死神') || card.name.includes('世界')) {
                destroyCard(effCtx, card.instanceId);

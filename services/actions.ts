@@ -124,13 +124,35 @@ export const damagePlayer = (ctx: EffectContext, targetId: number, amount: numbe
         ctx.log(`[恋人] ${source.name} 因造成伤害而受到反噬！`);
     }
 
+    // Swords Hanged Man: Reflect dealt damage to self
+    let hangedManSelfDmg = 0;
+    let hangedManMarksToAdd = 0;
+    if (source.swordsHangedManActive && damageDealt > 0) {
+         hangedManSelfDmg = damageDealt;
+         hangedManMarksToAdd = damageDealt;
+         ctx.log(`[倒吊人] ${source.name} 因造成伤害而承受同等伤害并标记手牌！`);
+    }
+
     // Apply Changes
-    const newSourceHp = source.hp + (source.preventHealing ? 0 : sourceHeal) - sourceSelfDmg;
+    const newSourceHp = source.hp + (source.preventHealing ? 0 : sourceHeal) - sourceSelfDmg - hangedManSelfDmg;
+    
+    // Apply Hanged Man Marks
+    let newSourceHand = [...source.hand];
+    if (hangedManMarksToAdd > 0) {
+        let markedCount = 0;
+        newSourceHand = newSourceHand.map(c => {
+             if (markedCount < hangedManMarksToAdd && !c.marks.includes('mark-swords-hangedman')) {
+                 markedCount++;
+                 return addMarkToCard(c, 'mark-swords-hangedman');
+             }
+             return c;
+        });
+    }
 
     return {
       ...prev,
       [key]: { ...p, hp: newHp, nextDamageDouble },
-      [sourceKey]: { ...source, hp: newSourceHp }
+      [sourceKey]: { ...source, hp: newSourceHp, hand: newSourceHand }
     };
   });
 };

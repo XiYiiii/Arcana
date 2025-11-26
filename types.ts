@@ -96,7 +96,7 @@ export interface PendingEffect {
 
 export interface DelayedEffect {
   turnsRemaining: number;
-  action: 'DRAW' | 'DISCARD';
+  action: 'DRAW' | 'DISCARD' | 'ATK_CHANGE';
   amount: number;
   sourceCardName: string;
 }
@@ -131,6 +131,7 @@ export interface PlayerState {
   damageReflection: boolean; // Priestess: Take dmg when taking dmg
   incomingDamageConversion: boolean; // Priestess Instant: Convert dmg > atk to heal
   nextDamageDouble: boolean; // Fool Instant: Next incoming damage doubled
+  swordsHangedManActive: boolean; // Swords Hanged Man: Reflect dealt damage to self
   
   delayedEffects: DelayedEffect[]; // For Wands Hanged Man
   

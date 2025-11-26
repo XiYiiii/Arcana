@@ -88,6 +88,7 @@ export default function App() {
         immunityThisTurn: false, immunityNextTurn: false, effectDoubleNext: false,
         isReversed: false, isInvalidated: false, hpRecoverNextTurn: 0, invalidateNextPlayedCard: false,
         preventHealing: false, hasLifesteal: false, damageReflection: false, incomingDamageConversion: false, nextDamageDouble: false,
+        swordsHangedManActive: false,
         delayedEffects: [],
         maxHandSize: MAX_HAND_SIZE, skipDiscardThisTurn: false
       });
