@@ -6,7 +6,7 @@ import { modifyPlayer, drawCards, getOpponentId } from '../../../services/action
 export const WANDS_FOOL: CardDefinition = {
     id: 'wands-fool', name: '权杖·愚者', suit: CardSuit.WANDS, rank: 200,
     // Description loaded from data/descriptions.ts
-    keywords: [Keyword.INVALIDATE],
+    keywords: [],
     onDraw: (ctx) => {
         ctx.log("【愚者】混乱！双方手牌全部弃置！");
         const discardAll = (pid: number) => {

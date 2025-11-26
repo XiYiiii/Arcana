@@ -1,12 +1,12 @@
 
 
-import { CardDefinition, CardSuit, InstantWindow } from '../../../types';
+import { CardDefinition, CardSuit, InstantWindow, Keyword } from '../../../types';
 import { damagePlayer, drawCards, modifyPlayer, discardCards, getOpponentId } from '../../../services/actions';
 
 export const SWORDS_FOOL: CardDefinition = {
     id: 'swords-fool', name: '宝剑·愚者', suit: CardSuit.SWORDS, rank: 300,
     // Description loaded from data/descriptions.ts
-    keywords: [],
+    keywords: [Keyword.INVALIDATE],
     onDraw: (ctx) => {
         const atk = ctx.gameState[ctx.sourcePlayerId === 1 ? 'player1' : 'player2'].atk;
         damagePlayer(ctx, ctx.sourcePlayerId, atk);

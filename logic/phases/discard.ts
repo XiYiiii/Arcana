@@ -1,5 +1,7 @@
 
 
+
+
 import { GamePhase, InstantWindow, PlayerState } from '../../types';
 
 export const executeDiscardPhase = (
@@ -49,11 +51,15 @@ export const executeDiscardPhase = (
           }
       });
 
+      // Reset Locked Status on all cards in hand
+      const unlockedHand = p.hand.map(c => ({ ...c, isLocked: false }));
+
       return {
         state: {
           ...p,
           hp,
           atk,
+          hand: unlockedHand, // Apply unlocked hand
           fieldSlot: null,
           isFieldCardRevealed: false,
           discardPile: field ? [...p.discardPile, field] : p.discardPile, 

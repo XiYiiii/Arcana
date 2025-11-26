@@ -1,7 +1,9 @@
 
 
+
+
 import { GamePhase, InstantWindow, EffectContext, Card, PendingEffect, Keyword } from '../../types';
-import { damagePlayer, modifyPlayer, getOpponentId, drawCards, destroyCard } from '../../services/actions';
+import { damagePlayer, modifyPlayer, getOpponentId, drawCards, destroyCard, updateQuestProgress } from '../../services/actions';
 import { compareCards } from '../../services/gameUtils';
 
 const DELAY_MS = 600; 
@@ -114,6 +116,11 @@ export const executeResolveEffects = async (
      if (card) {
        const effCtx = createEffectContext(pid, card);
        
+       // Swords Sun Quest Check
+       if (card.name.includes('太阳')) {
+            updateQuestProgress(effCtx, pid, 'quest-swords-sun', 1);
+       }
+
        // Check Invalidation
        if ((p.isInvalidated || p.invalidateNextPlayedCard || card.marks.includes('mark-invalidated')) && !card.isTreasure) { 
            addLog(`[无效] ${p.name} 的 [${card.name}] 被无效了！`);

@@ -221,11 +221,20 @@ export const CardComponent: React.FC<CardComponentProps> = ({
 
   const innerContent = isFaceUp ? (
     <div className={`relative w-full h-full rounded-lg overflow-hidden flex flex-col shadow-card transition-transform duration-300 bg-stone-800
-      ${disabled ? 'opacity-60 grayscale-[0.8] cursor-not-allowed' : 'cursor-pointer'}`}>
+      ${disabled || card.isLocked ? 'opacity-80 grayscale-[0.8] cursor-not-allowed' : 'cursor-pointer'}`}>
       
       {/* Border Overlay */}
       <div className={`absolute inset-0 border-[2px] rounded-lg pointer-events-none z-20 ${isSelected ? 'border-amber-500' : 'border-stone-600'}`}></div>
       
+      {/* LOCK OVERLAY */}
+      {card.isLocked && (
+          <div className="absolute inset-0 bg-stone-950/60 z-30 flex items-center justify-center backdrop-blur-[2px]">
+              <div className="bg-stone-900 border-2 border-red-500 rounded-full w-12 h-12 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                  <span className="text-2xl drop-shadow-md">🔒</span>
+              </div>
+          </div>
+      )}
+
       {/* Header - OPAQUE BACKGROUND */}
       <div className="relative bg-stone-900 text-stone-200 p-1.5 pb-2 z-10 flex justify-between items-start border-b border-stone-700 shadow-md">
         <div className="flex flex-col w-full pr-6">
@@ -280,6 +289,13 @@ export const CardComponent: React.FC<CardComponentProps> = ({
          ))}
        </div>
        
+       {/* Lock Indicator on Back */}
+       {card.isLocked && (
+          <div className="absolute inset-0 bg-stone-950/60 z-30 flex items-center justify-center backdrop-blur-[1px]">
+               <span className="text-2xl">🔒</span>
+          </div>
+       )}
+       
        {label && <div className="absolute bottom-2 right-2 text-[8px] font-bold text-stone-600/50 z-20">{label}</div>}
     </div>
   );
@@ -287,7 +303,7 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   return (
     <div 
       ref={cardRef}
-      onClick={!disabled ? onClick : undefined} 
+      onClick={!disabled && !card.isLocked ? onClick : undefined} 
       className={`${wrapperClasses} ${stateClasses}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}

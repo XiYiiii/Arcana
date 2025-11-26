@@ -48,6 +48,7 @@ export const KEYWORD_DISPLAY_NAMES: Record<Keyword, string> = {
   [Keyword.SHUFFLE]: "打乱",
   [Keyword.FIELD]: "场地",
   [Keyword.QUEST]: "任务",
+  [Keyword.LOCK]: "锁定",
 };
 
 export const KEYWORD_DESCRIPTIONS: Record<Keyword, string> = {
@@ -66,4 +67,5 @@ export const KEYWORD_DESCRIPTIONS: Record<Keyword, string> = {
   [Keyword.SHUFFLE]: "随机打乱牌堆顺序。",
   [Keyword.FIELD]: "设置一个持续生效的场地环境，直到被新的场地取代或被弃置。",
   [Keyword.QUEST]: "获得一个持续的任务，完成条件后触发效果。上限2个。",
+  [Keyword.LOCK]: "被锁定的卡牌无法被打出，直到下一回合。",
 };

@@ -43,6 +43,7 @@ export enum Keyword {
   SHUFFLE = 'SHUFFLE',   // 打乱
   FIELD = 'FIELD',       // 场地
   QUEST = 'QUEST',       // 任务
+  LOCK = 'LOCK',         // 锁定
 }
 
 export type EffectContext = {
@@ -157,6 +158,9 @@ export interface PlayerState {
   skipDiscardThisTurn: boolean; // For Treasure Wands
   
   quests: Quest[]; // Active quests
+  
+  // Special Quest State
+  swordsSunDamageMult: number; // For Swords Sun quest loop
 }
 
 export interface InteractionRequest {
