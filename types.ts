@@ -213,3 +213,18 @@ export interface GameState {
   interaction: InteractionRequest | null; // For User Choices (Star, etc)
   visualEvents: VisualEvent[]; // Queue for one-shot animations
 }
+
+// --- NETWORK TYPES ---
+
+export type NetworkRole = 'HOST' | 'GUEST' | 'NONE';
+
+export interface NetworkMessage {
+  type: 'SYNC' | 'ACTION' | 'HELLO';
+  payload?: any;
+}
+
+export interface ActionPayload {
+  type: 'CLICK_CARD' | 'USE_INSTANT' | 'PHASE_ACTION' | 'INTERACTION_OPTION' | 'INTERACTION_NUMBER' | 'INTERACTION_CARD';
+  playerId: number;
+  data: any;
+}
