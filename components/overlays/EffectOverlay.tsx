@@ -107,7 +107,7 @@ export const EffectOverlay = ({ effect, onDismiss }: { effect: PendingEffect, on
            </div>
         </div>
 
-        <div className="text-stone-300 font-serif text-xs leading-relaxed bg-stone-900/60 px-4 py-3 rounded border border-stone-800 w-full text-center max-h-[120px] overflow-y-auto scrollbar-thin scrollbar-thumb-stone-700">
+        <div className="text-stone-300 font-serif text-xs leading-relaxed bg-stone-900/60 px-4 py-3 rounded border border-stone-800 w-full text-center max-h-[120px] overflow-y-auto">
            {effect.description || "处理特效中..."}
         </div>
 

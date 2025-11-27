@@ -29,7 +29,7 @@ export const CardPileOverlay: React.FC<CardPileOverlayProps> = ({ title, cards, 
                 </button>
             </div>
 
-            <div className="flex-grow overflow-y-auto p-8 scrollbar-thin scrollbar-thumb-stone-700">
+            <div className="flex-grow overflow-y-auto p-8">
                 <div className="flex flex-wrap gap-6 justify-center max-w-[1400px] mx-auto">
                     {displayCards.map((card, index) => (
                         <div key={card.instanceId} className="relative flex flex-col items-center group">

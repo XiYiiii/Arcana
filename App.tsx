@@ -1,19 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from './types';
 import { generateDeck, shuffleDeck } from './services/gameUtils';
@@ -594,7 +578,7 @@ export default function App() {
          <div className="w-1/3 max-w-xs flex flex-col items-center justify-center border-r border-stone-800/50 pr-4">
             {getActionButton()}
          </div>
-         <div className="w-2/3 flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-stone-700 font-mono text-[10px] space-y-1 pl-2 mask-image-gradient-b">
+         <div className="w-2/3 flex-grow overflow-y-auto font-mono text-[10px] space-y-1 pl-2 mask-image-gradient-b">
             {gameState.logs.map((log, i) => (
                <div key={i} className="border-b border-stone-800/30 pb-0.5 text-stone-400 hover:text-stone-200 transition-colors">
                   <span className="text-stone-600 mr-2">[{String(gameState.logs.length - i).padStart(3, '0')}]</span>

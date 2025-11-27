@@ -45,7 +45,7 @@ export const InteractionOverlay = ({ request }: { request: InteractionRequest })
           
           {request.inputType === 'CARD_SELECT' && (
              <div className="flex flex-col items-center gap-4 w-full overflow-hidden z-10 flex-1 min-h-0">
-                <div className="flex flex-wrap justify-center gap-2 overflow-y-auto p-2 w-full scrollbar-thin scrollbar-thumb-yellow-600/50 max-h-[300px]">
+                <div className="flex flex-wrap justify-center gap-2 overflow-y-auto p-2 w-full max-h-[300px] [&::-webkit-scrollbar-thumb]:bg-yellow-600/50">
                    {request.cardsToSelect?.map((card) => (
                       <div key={card.instanceId} className="transform hover:scale-105 transition-transform scale-90">
                         <CardComponent 

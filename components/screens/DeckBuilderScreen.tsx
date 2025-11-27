@@ -87,7 +87,7 @@ export const DeckBuilderScreen: React.FC<DeckBuilderScreenProps> = ({ enabledCar
         </div>
 
         {/* Grid */}
-        <div className="flex-grow overflow-y-auto p-6 bg-stone-900/50 scrollbar-thin scrollbar-thumb-stone-700">
+        <div className="flex-grow overflow-y-auto p-6 bg-stone-900/50">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-6 justify-items-center max-w-[1800px] mx-auto pb-20">
                 {filteredCards.map(def => {
                     const isSelected = selectedIds.has(def.id);
