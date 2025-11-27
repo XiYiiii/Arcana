@@ -192,7 +192,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                 {isOpponent ? (
                     // Opponent Left: Deck (P2)
                     <div className="relative">
-                        <DeckPile count={player.deck.length} isOpponent onClick={onViewDeck} />
+                        <DeckPile count={player.deck.length} isOpponent onClick={isOpponent ? undefined : onViewDeck} />
                         <TreasureVault position="bottom" onClick={onViewVault} />
                     </div>
                 ) : (

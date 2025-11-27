@@ -66,6 +66,7 @@ export default function App() {
         } else if (data.type === 'REQUEST_SYNC') {
             // Host receives sync request from Guest (handshake)
             if (netRole === 'HOST' && gameStateRef.current) {
+                console.log("Host received sync request, sending state...");
                 networkManager.send({ type: 'SYNC', payload: serializeState(gameStateRef.current) });
             }
         } else if (data.type === 'ACTION') {
@@ -76,13 +77,24 @@ export default function App() {
         }
     };
 
-    // Handshake: If we are guest, request state immediately upon mounting/ready
+    // Handshake Loop: If we are guest, repeatedly request state until we have it.
+    // This fixes the issue where the initial request is lost if Host isn't ready.
+    let syncInterval: any = null;
     if (netRole === 'GUEST') {
-        // Small delay to ensure connection is fully registered locally, though conn.open check inside send handles it.
-        setTimeout(() => {
-            networkManager.send({ type: 'REQUEST_SYNC' });
-        }, 500);
+        syncInterval = setInterval(() => {
+            if (!gameStateRef.current) {
+                console.log("Guest waiting for state... sending REQUEST_SYNC");
+                networkManager.send({ type: 'REQUEST_SYNC' });
+            } else {
+                // We have state, stop nagging
+                clearInterval(syncInterval);
+            }
+        }, 1000);
     }
+
+    return () => {
+        if (syncInterval) clearInterval(syncInterval);
+    };
   }, [netRole]);
 
   // Host Broadcast
@@ -546,8 +558,9 @@ export default function App() {
 
   // --- GAME RENDER ---
   if (!gameState) return <div className="bg-stone-900 h-screen text-stone-400 flex flex-col gap-4 items-center justify-center font-serif">
-      <div className="text-2xl animate-pulse">Waiting for Host...</div>
-      <button onClick={() => { networkManager.close(); setAppMode('MENU'); }} className="px-4 py-2 bg-stone-800 rounded">Cancel</button>
+      <div className="text-2xl animate-pulse">等待主机...</div>
+      <div className="text-xs text-stone-600">正在建立连接并同步状态</div>
+      <button onClick={() => { networkManager.close(); setAppMode('MENU'); }} className="px-4 py-2 bg-stone-800 rounded hover:bg-stone-700">取消</button>
   </div>;
 
   const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState;
