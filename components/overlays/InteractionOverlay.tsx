@@ -4,45 +4,19 @@ import React, { useState } from 'react';
 import { InteractionRequest } from '../../types';
 import { CardComponent } from '../CardComponent';
 
-export const InteractionOverlay = ({ request, onOptionSelected }: { request: InteractionRequest, onOptionSelected?: (index: number, val?: any) => void }) => {
+export const InteractionOverlay = ({ request }: { request: InteractionRequest }) => {
   const [numberVal, setNumberVal] = useState(request.min || 1);
   const [hoveredOptionIndex, setHoveredOptionIndex] = useState<number | null>(null);
 
   if (!request) return null;
 
-  // Helper to handle click logic
-  // If request has local action (Host/Local), run it.
-  // Otherwise, notify via callback (Guest).
-  const handleOptionClick = (index: number) => {
-      if (request.options && request.options[index] && request.options[index].action) {
-          request.options[index].action();
-      } else if (onOptionSelected) {
-          onOptionSelected(index);
-      }
-  };
-
-  const handleConfirmNumber = () => {
-      if (request.onConfirm) {
-          request.onConfirm(numberVal);
-      } else if (onOptionSelected) {
-          onOptionSelected(-1, numberVal); // Special index -1 for Number/Confirm
-      }
-  };
-  
-  const handleCardSelect = (card: any) => {
-      if (request.onCardSelect) {
-          request.onCardSelect(card);
-      } else if (onOptionSelected) {
-          // We need to find the index of this card in `cardsToSelect` to transmit it reliably
-          const idx = request.cardsToSelect?.findIndex(c => c.instanceId === card.instanceId);
-          if (idx !== undefined && idx !== -1) {
-              onOptionSelected(-2, idx); // Special index -2 for Card Select, val is card index
-          }
-      }
-  };
-
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none">
+       {/* Transparent backdrop for clicks outside? No, interactions are blocking usually. 
+           But to 'mimic effect trigger' and 'not cover battlefield', we remove the dark backdrop.
+           We add a small invisible blocker for clicks if needed, or just let it float.
+           Usually interactions require attention. We'll use a very faint backdrop to signal modal but keep visibility.
+       */}
        <div className="absolute inset-0 bg-black/5 pointer-events-auto"></div>
 
        <div className="bg-stone-950/95 border border-yellow-600/30 p-6 rounded-2xl max-w-2xl w-full shadow-2xl text-center flex flex-col max-h-[70vh] relative pointer-events-auto animate-in zoom-in-95 fade-in duration-300 backdrop-blur-md">
@@ -61,7 +35,7 @@ export const InteractionOverlay = ({ request, onOptionSelected }: { request: Int
                    <button onClick={() => setNumberVal(Math.min(request.max || 99, numberVal + 1))} className="w-10 h-10 bg-stone-700 hover:bg-stone-600 rounded-lg text-xl text-white transition-colors">+</button>
                 </div>
                 <button 
-                  onClick={handleConfirmNumber}
+                  onClick={() => request.onConfirm && request.onConfirm(numberVal)}
                   className="mt-2 px-8 py-2 bg-yellow-600 hover:bg-yellow-500 text-black rounded-lg font-bold text-lg shadow-lg transition-transform hover:scale-105 active:scale-95"
                 >
                    确认
@@ -77,7 +51,7 @@ export const InteractionOverlay = ({ request, onOptionSelected }: { request: Int
                         <CardComponent 
                             card={card}
                             isFaceUp={true}
-                            onClick={() => handleCardSelect(card)}
+                            onClick={() => request.onCardSelect && request.onCardSelect(card)}
                         />
                       </div>
                    ))}
@@ -85,7 +59,7 @@ export const InteractionOverlay = ({ request, onOptionSelected }: { request: Int
                 {request.options && (
                   <div className="flex gap-4 mt-2 border-t border-white/5 pt-3 w-full justify-center">
                       {request.options.map((opt, idx) => (
-                        <button key={idx} onClick={() => handleOptionClick(idx)} className="px-6 py-1.5 bg-stone-700 hover:bg-stone-600 rounded text-stone-200 font-bold border border-stone-600 text-xs">{opt.label}</button>
+                        <button key={idx} onClick={opt.action} className="px-6 py-1.5 bg-stone-700 hover:bg-stone-600 rounded text-stone-200 font-bold border border-stone-600 text-xs">{opt.label}</button>
                       ))}
                   </div>
                 )}
@@ -97,7 +71,7 @@ export const InteractionOverlay = ({ request, onOptionSelected }: { request: Int
                {request.options && request.options.map((opt, idx) => (
                   <div key={idx} className="relative group/opt">
                       <button 
-                        onClick={() => handleOptionClick(idx)}
+                        onClick={opt.action}
                         onMouseEnter={() => setHoveredOptionIndex(idx)}
                         onMouseLeave={() => setHoveredOptionIndex(null)}
                         className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 border-b-4 border-indigo-900 active:border-b-0 active:translate-y-1 text-white rounded-lg font-bold text-sm transition-all min-w-[120px]"

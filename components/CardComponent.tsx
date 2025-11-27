@@ -179,8 +179,8 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   const keywordsToShow = card.keywords && card.keywords.length > 0 ? card.keywords : [];
   const marksToShow = card.marks || [];
   
-  // Only show tooltips if face up
-  const keywordTooltip = (showTooltip && isFaceUp && keywordsToShow.length > 0) ? (
+  // Right Side Tooltip (Keywords)
+  const keywordTooltip = showTooltip && keywordsToShow.length > 0 ? (
      <div 
         className={`absolute top-0 z-[9999] pointer-events-none flex flex-col gap-1.5 w-48 bg-stone-950/95 text-stone-200 p-2.5 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.9)] border border-stone-500/50 backdrop-blur-xl
            ${tooltipSide === 'right' ? 'left-[105%]' : 'right-[105%]'}`}
@@ -205,7 +205,21 @@ export const CardComponent: React.FC<CardComponentProps> = ({
      </div>
   ) : null;
 
-  const marksTooltip = (showTooltip && isFaceUp && marksToShow.length > 0) ? (
+  // Left Side Tooltip (Marks)
+  // Float left if possible, or right if tooltipSide is 'left' (avoid conflict)?
+  // Actually, keyword tooltip respects `tooltipSide`. 
+  // Marks should appear on the OPPOSITE side if possible, or stacked?
+  // User requested: "float on left, distinct from keywords on right".
+  // Let's force it to left: right-[105%]
+  // If keyword tooltip is also on left (tooltipSide='left'), they might overlap. 
+  // But usually CardComponent usage defaults to 'right' except in hand fan.
+  // In hand fan, cards on right side have tooltipSide='left'. 
+  // In that case, keywords are on left. Marks should probably be on right then?
+  // Let's make Marks tooltip respect `tooltipSide === 'right' ? 'left-side' : 'right-side'`.
+  // Wait, user said "marks on left, keywords on right".
+  // Let's try to stick to that unless it flies off screen.
+  
+  const marksTooltip = showTooltip && marksToShow.length > 0 ? (
      <div 
         className={`absolute top-0 z-[9999] pointer-events-none flex flex-col gap-2 w-48 bg-stone-950/95 text-stone-200 p-2 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.9)] border border-stone-500/50 backdrop-blur-xl
            right-[105%] mr-1`} // Force Left Side
