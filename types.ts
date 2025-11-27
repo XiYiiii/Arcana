@@ -219,7 +219,7 @@ export interface GameState {
 export type NetworkRole = 'HOST' | 'GUEST' | 'NONE';
 
 export interface NetworkMessage {
-  type: 'SYNC' | 'ACTION' | 'HELLO';
+  type: 'SYNC' | 'ACTION' | 'HELLO' | 'REQUEST_SYNC'; // Added REQUEST_SYNC
   payload?: any;
 }
 

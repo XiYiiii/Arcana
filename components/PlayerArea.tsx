@@ -19,14 +19,7 @@ interface PlayerAreaProps {
   onInstant: (id: string) => void;
   onViewDiscard?: () => void;
   onViewDeck?: () => void; // New
-  onViewVault?: () => void; // New - Technically player doesn't have a personal vault, but we can view treasures collected? Or Game Vault? 
-  // Wait, "Treasure Vault" visual usually implies the GLOBAL vault or personal collected treasures? 
-  // In `App.tsx` logic, treasures are just definitions. But prompt says "Knowing how many treasures in *my* vault".
-  // Actually, treasures are earned into HAND. There isn't a separate "Vault Pile" for player. 
-  // The "Treasure Vault" UI element usually represents the source of treasures (Global).
-  // But maybe the user means "How many treasures are left in the global vault"?
-  // Or "How many cards in my Deck".
-  // Let's assume "Vault" click shows the global available treasures.
+  onViewVault?: () => void; // New
 }
 
 const TreasureVault = ({ position, onClick }: { position: 'top' | 'bottom', onClick?: () => void }) => (
@@ -269,7 +262,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                         >
                             <CardComponent 
                                 card={card} 
-                                isFaceUp={true} 
+                                isFaceUp={!isOpponent} // Only show face up if not opponent
                                 label={isOpponent ? "P2" : "P1"}
                                 isSelected={isSelectedCard}
                                 disabled={isResolving || !allowInteraction} 

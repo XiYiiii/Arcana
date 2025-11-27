@@ -62,9 +62,12 @@ export default function App() {
     networkManager.onData = (data: any) => {
         if (data.type === 'SYNC') {
             // Guest receives state
-            // Note: Functions in cards are stripped, but UI components don't call them directly anyway, 
-            // except Interaction Request options which we handle separately.
             setGameState(data.payload);
+        } else if (data.type === 'REQUEST_SYNC') {
+            // Host receives sync request from Guest (handshake)
+            if (netRole === 'HOST' && gameStateRef.current) {
+                networkManager.send({ type: 'SYNC', payload: serializeState(gameStateRef.current) });
+            }
         } else if (data.type === 'ACTION') {
             // Host receives action
             if (netRole === 'HOST') {
@@ -72,6 +75,14 @@ export default function App() {
             }
         }
     };
+
+    // Handshake: If we are guest, request state immediately upon mounting/ready
+    if (netRole === 'GUEST') {
+        // Small delay to ensure connection is fully registered locally, though conn.open check inside send handles it.
+        setTimeout(() => {
+            networkManager.send({ type: 'REQUEST_SYNC' });
+        }, 500);
+    }
   }, [netRole]);
 
   // Host Broadcast
@@ -829,4 +840,3 @@ export default function App() {
     </div>
   );
 }
-
