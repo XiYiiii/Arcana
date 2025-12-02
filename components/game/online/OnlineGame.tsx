@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import Peer, { DataConnection } from 'peerjs';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
-import { NetworkMessage, NetworkRole, GameActionPayload } from '../../../types/network'; // Import Network Types
+import { NetworkMessage, NetworkRole, GameActionPayload } from '../../../types/network'; 
 import { generateDeck, shuffleDeck } from '../../../services/gameUtils';
 import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress } from '../../../services/actions'; 
 import { MAX_HAND_SIZE, INITIAL_ATK } from '../../../constants';
@@ -11,8 +12,9 @@ import { PhaseBar } from '../../PhaseBar';
 import { PlayerArea } from '../../PlayerArea';
 import { FieldArea } from '../../FieldArea';
 import { InteractionOverlay, EffectOverlay, GameOverOverlay, GalleryOverlay, CardPileOverlay } from '../../overlays';
-import { NetworkDebugOverlay } from './NetworkDebugOverlay'; // Import New Debug Overlay
+import { NetworkDebugOverlay } from './NetworkDebugOverlay'; 
 import { VisualEffectsLayer } from '../../VisualEffectsLayer';
+import { ConnectionScreen } from './ConnectionScreen';
 
 // Import Logic Phases
 import { executeDrawPhase } from '../../../logic/phases/draw';
@@ -27,13 +29,22 @@ interface OnlineGameProps {
     onExit: () => void;
 }
 
+type ConnectionState = 'IDLE' | 'HOSTING' | 'CONNECTING' | 'CONNECTED';
+
 export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialHp, initialHandSize, onExit }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   
   // --- Network State ---
-  const [role, setRole] = useState<NetworkRole>('HOST'); // Default to HOST for now
+  const [role, setRole] = useState<NetworkRole>('HOST'); 
+  const [connState, setConnState] = useState<ConnectionState>('IDLE');
+  const [myPeerId, setMyPeerId] = useState<string | null>(null);
+  const [networkError, setNetworkError] = useState<string | null>(null);
+  
   const [networkLogs, setNetworkLogs] = useState<NetworkMessage[]>([]);
-  const [showNetworkDebug, setShowNetworkDebug] = useState(true); // Default open for development
+  const [showNetworkDebug, setShowNetworkDebug] = useState(false);
+
+  const peerRef = useRef<Peer | null>(null);
+  const connRef = useRef<DataConnection | null>(null);
 
   // --- Local Selection State ---
   const [p1SelectedCardId, setP1SelectedCardId] = useState<string | null>(null);
@@ -48,148 +59,16 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const gameStateRef = useRef<GameState | null>(null);
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
-  // --- Network Infrastructure ---
-
-  const addNetworkLog = (msg: NetworkMessage) => {
-      setNetworkLogs(prev => [...prev, msg]);
-  };
-
-  const sendNetworkMessage = (type: NetworkMessage['type'], payload: any) => {
-      const msg: NetworkMessage = {
-          id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          sender: role,
-          type,
-          payload,
-          timestamp: Date.now()
-      };
-
-      // 1. Log the outgoing message
-      addNetworkLog(msg);
-
-      // 2. Simulate Network Transmission (Loopback for now)
-      // In a real app, this would be: socket.emit('message', msg);
-      console.log(`[NET] Sending:`, msg);
-
-      // 3. Simulate "Host" processing immediately if we are host, 
-      // OR Simulate "Server" echoing back if we are client.
-      // For this P2P structure demo:
-      // If I am Host, I process my own actions immediately (or via the loopback).
-      // If I am Client, I send ACTION, and wait for SYNC.
-      
-      // Simulating loopback delay
-      setTimeout(() => {
-          receiveNetworkMessage(msg); 
-      }, 50);
-  };
-
-  const receiveNetworkMessage = (msg: NetworkMessage) => {
-      // Don't log our own messages as "Received" in the overlay unless strictly debugging loopback.
-      // But for P2P, usually you treat local actions as confirmed immediately or wait for ACK.
-      // Let's log it if it comes from "Remote" (simulated).
-      
-      // For this simulation: 
-      // If I am HOST, and message is from CLIENT -> Log as IN.
-      // If I am HOST, and message is from HOST (Loopback) -> Ignore logging as IN (already logged as OUT).
-      // BUT for logic processing, we need to handle it.
-
-      if (msg.sender !== role) {
-          addNetworkLog({ ...msg, id: `recv-${msg.id}` }); // Log reception
-      }
-
-      handleIncomingMessageLogic(msg);
-  };
-
-  const handleIncomingMessageLogic = (msg: NetworkMessage) => {
-      // This is where the P2P Switchboard lives
-      if (role === 'HOST') {
-          if (msg.type === 'PLAYER_ACTION') {
-              // Host handles Action from Client (or Self)
-              const action = msg.payload as GameActionPayload;
-              processGameAction(msg.sender === 'HOST' ? 1 : 2, action);
-          }
-      } else {
-          // Client Logic
-          if (msg.type === 'GAME_STATE_SYNC') {
-              // Client accepts authoritative state
-              // setGameState(msg.payload);
-          }
-      }
-  };
-
-  // The Core Logic Processor (Runs on HOST)
-  const processGameAction = (playerId: number, action: GameActionPayload) => {
-      if (!gameStateRef.current) return;
-      const gs = gameStateRef.current;
-      const player = playerId === 1 ? gs.player1 : gs.player2;
-
-      console.log(`[HOST] Processing Action from P${playerId}:`, action);
-
-      if (action.actionType === 'CLICK_CARD' && action.cardId) {
-          const card = player.hand.find(c => c.instanceId === action.cardId);
-          if (card) {
-              // Call existing logic
-              handleCardClickLogic(player, card);
-          }
-      }
-      else if (action.actionType === 'USE_INSTANT' && action.cardId) {
-          handleInstantUseLogic(player, action.cardId);
-      }
-  };
-
-  // --- Logic Helpers (Wrapped) ---
-  // These formerly direct event handlers now dispatch NETWORK MESSAGES
-
-  const onCardClickWrapper = (player: PlayerState, card: Card) => {
-      // Identify if this is "My" action
-      // In P2P, Player 1 is Host, Player 2 is Client usually.
-      // If I am HOST, I am Player 1.
-      // If I am CLIENT, I am Player 2.
-      
-      const myId = role === 'HOST' ? 1 : 2;
-      if (player.id !== myId) {
-          // Can't click opponent's cards normally (except specific interactions, handled elsewhere)
-          return; 
-      }
-
-      sendNetworkMessage('PLAYER_ACTION', {
-          actionType: 'CLICK_CARD',
-          cardId: card.instanceId
-      });
-  };
-
-  const onInstantClickWrapper = (playerId: number, cardId: string) => {
-      const myId = role === 'HOST' ? 1 : 2;
-      if (playerId !== myId) return;
-
-      sendNetworkMessage('PLAYER_ACTION', {
-          actionType: 'USE_INSTANT',
-          cardId: cardId
-      });
-  };
-
-  // --- Standard Game Logic (Host Only effectively) ---
-  // The logic below is identical to LocalGame but only "Actuated" by processGameAction if Host.
-  // For the purpose of this file structure, we keep the logic here so the Host can run it.
-
-  const addLog = (message: string) => {
-    setGameState(prev => prev ? ({ ...prev, logs: [message, ...prev.logs] }) : null);
-  };
-
-  const createEffectContext = (playerId: number, card: Card): EffectContext => {
-     const p = (playerId === 1 ? gameStateRef.current?.player1 : gameStateRef.current?.player2) || gameStateRef.current?.player1!; 
-     return {
-       gameState: gameStateRef.current!,
-       sourcePlayerId: playerId,
-       card,
-       setGameState,
-       log: addLog,
-       isReversed: p?.isReversed
-     };
-  };
-
-  // --- Initialization ---
+  // --- Cleanup on Unmount ---
   useEffect(() => {
-      // ... Same init logic ...
+      return () => {
+          if (connRef.current) connRef.current.close();
+          if (peerRef.current) peerRef.current.destroy();
+      };
+  }, []);
+
+  // --- Initial Game Setup Logic (Reused) ---
+  const initializeGame = () => {
       const allowedDefs = CARD_DEFINITIONS.filter(c => enabledCardIds.includes(c.id) || c.isTreasure);
       const finalDefs = allowedDefs.length < 10 ? CARD_DEFINITIONS : allowedDefs;
       
@@ -216,11 +95,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         swordsSunDamageMult: 1, 
       });
 
-      const newState: GameState = {
+      return {
         phase: GamePhase.DRAW,
         instantWindow: InstantWindow.NONE,
         turnCount: 1,
-        logs: ["(联机模式 - 主机) 游戏开始。", `等待连接...`],
+        logs: ["(联机模式) 游戏开始。"],
         player1: initialPlayerState(1, p1Deck, p1Hand),
         player2: initialPlayerState(2, p2Deck, p2Hand),
         field: null,
@@ -230,62 +109,238 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         interaction: null,
         visualEvents: []
       };
+  };
 
-      setGameState(newState);
-      
-      // Host automatically broadcasts initial state
-      if (role === 'HOST') {
-          // sendNetworkMessage('GAME_STATE_SYNC', newState); // Don't flood log on init in dev
+  // --- Network Infrastructure ---
+
+  const addNetworkLog = (msg: NetworkMessage) => {
+      setNetworkLogs(prev => [...prev, msg]);
+  };
+
+  const sendNetworkMessage = (type: NetworkMessage['type'], payload: any) => {
+      if (!connRef.current || !connRef.current.open) {
+          console.warn("Connection not open, cannot send message");
+          return;
       }
 
-  }, [enabledCardIds, initialHp, initialHandSize]);
+      const msg: NetworkMessage = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          sender: role,
+          type,
+          payload,
+          timestamp: Date.now()
+      };
 
-  // ... (Keep existing Effect Hooks for Empty Hand, Quest Check, Effect Queue etc.) ...
+      addNetworkLog(msg);
+      connRef.current.send(msg);
+
+      // If I am Host and I send an ACTION, I need to process it myself too (Loopback logic for Host Actions)
+      // Actually, Host logic usually triggers on receipt.
+      // If Host UI triggers "Click Card", it should probably call processGameAction directly AND broadcast sync?
+      // Better: Host UI calls `processGameAction`. `processGameAction` updates state.
+      // We broadcast `GAME_STATE_SYNC` after state updates.
+      // BUT for `PLAYER_ACTION` messages from Client, we process them then broadcast sync.
+  };
+
+  const handleDataReceive = (data: any) => {
+      const msg = data as NetworkMessage;
+      addNetworkLog({ ...msg, id: `recv-${msg.id}` }); // Log incoming
+
+      if (role === 'HOST') {
+          // HOST Logic
+          if (msg.type === 'PLAYER_ACTION') {
+              const action = msg.payload as GameActionPayload;
+              // Validate: Only process if it's from Player 2 (Client)
+              processGameAction(2, action);
+          }
+      } else {
+          // CLIENT Logic
+          if (msg.type === 'GAME_STATE_SYNC') {
+              const syncedState = msg.payload as GameState;
+              // Merge visual events to not lose animations that happened between syncs?
+              // Or just overwrite. Overwriting is safer for consistency.
+              // But we might want to preserve local UI state if needed.
+              setGameState(syncedState);
+          }
+      }
+  };
+
+  // --- Peer Setup Handlers ---
+
+  const setupPeer = (): Peer => {
+      // Create a random short ID for easier typing if possible, but PeerJS usually handles collisions.
+      // We'll let PeerJS generate one or use a prefix.
+      const id = `arcana-${Math.floor(Math.random() * 10000)}`;
+      const peer = new Peer(id);
+      
+      peer.on('error', (err) => {
+          console.error(err);
+          setNetworkError(`Connection Error: ${err.type}`);
+          setConnState('IDLE');
+      });
+
+      return peer;
+  };
+
+  const startHosting = () => {
+      setNetworkError(null);
+      setConnState('HOSTING');
+      setRole('HOST');
+      
+      const peer = setupPeer();
+      peerRef.current = peer;
+
+      peer.on('open', (id) => {
+          setMyPeerId(id);
+      });
+
+      peer.on('connection', (conn) => {
+          connRef.current = conn;
+          setupConnectionEvents(conn);
+      });
+  };
+
+  const joinGame = (hostId: string) => {
+      setNetworkError(null);
+      setConnState('CONNECTING');
+      setRole('CLIENT');
+
+      const peer = setupPeer();
+      peerRef.current = peer;
+
+      peer.on('open', () => {
+          const conn = peer.connect(hostId);
+          connRef.current = conn;
+          setupConnectionEvents(conn);
+      });
+  };
+
+  const setupConnectionEvents = (conn: DataConnection) => {
+      conn.on('open', () => {
+          setConnState('CONNECTED');
+          setNetworkError(null);
+          
+          if (role === 'HOST') {
+              // Host initializes game and sends initial state
+              const newState = initializeGame();
+              setGameState(newState);
+              // Send initial sync
+              setTimeout(() => {
+                  if (connRef.current?.open) {
+                      const msg: NetworkMessage = {
+                          id: 'init-sync', sender: 'HOST', type: 'GAME_STATE_SYNC', payload: newState, timestamp: Date.now()
+                      };
+                      connRef.current.send(msg);
+                  }
+              }, 500);
+          }
+      });
+
+      conn.on('data', (data) => {
+          handleDataReceive(data);
+      });
+
+      conn.on('close', () => {
+          setConnState('IDLE');
+          setNetworkError("Connection lost.");
+          setGameState(null);
+      });
+
+      conn.on('error', (err) => {
+          console.error("Conn error:", err);
+          setNetworkError("Connection error occurred.");
+      });
+  };
+
+  // --- Logic Helpers ---
+
+  // Host executes logic, then syncs state to client
+  // Wrapper to automatically sync after logic updates
+  // Since `setGameState` is async and we use functional updates, 
+  // we use a useEffect to detect state changes and broadcast SYNC if we are HOST.
+  useEffect(() => {
+      if (role === 'HOST' && connState === 'CONNECTED' && gameState) {
+          // Broadcast State
+          // Debounce slightly to avoid flooding? Or just send on every render?
+          // React renders often. We should probably only sync when significant things happen.
+          // Or we wrap `setGameState`?
+          // Using `useEffect` on gameState is easiest but might be heavy.
+          // Let's rely on `useEffect` but maybe check if it's "resolving" to avoid intermediate flicker?
+          // Actually, instant sync is best for responsiveness.
+          
+          // Construct message
+          const msg: NetworkMessage = {
+              id: `sync-${Date.now()}`,
+              sender: 'HOST',
+              type: 'GAME_STATE_SYNC',
+              payload: gameState,
+              timestamp: Date.now()
+          };
+          
+          // We don't log every sync to internal log array to save memory/noise, unless debug is very deep
+          // But we send it.
+          if (connRef.current?.open) {
+              connRef.current.send(msg);
+          }
+      }
+  }, [gameState, role, connState]);
+
+
+  // The Core Logic Processor (Runs on HOST)
+  const processGameAction = (playerId: number, action: GameActionPayload) => {
+      if (!gameStateRef.current) return;
+      const gs = gameStateRef.current;
+      const player = playerId === 1 ? gs.player1 : gs.player2;
+
+      console.log(`[HOST] Processing Action from P${playerId}:`, action);
+
+      if (action.actionType === 'CLICK_CARD' && action.cardId) {
+          const card = player.hand.find(c => c.instanceId === action.cardId);
+          if (card) {
+              handleCardClickLogic(player, card);
+          }
+      }
+      else if (action.actionType === 'USE_INSTANT' && action.cardId) {
+          handleInstantUseLogic(player, action.cardId);
+      }
+  };
+
+  // --- Standard Game Logic (Host Only) ---
+  const addLog = (message: string) => {
+    setGameState(prev => prev ? ({ ...prev, logs: [message, ...prev.logs] }) : null);
+  };
+
+  const createEffectContext = (playerId: number, card: Card): EffectContext => {
+     const p = (playerId === 1 ? gameStateRef.current?.player1 : gameStateRef.current?.player2) || gameStateRef.current?.player1!; 
+     return {
+       gameState: gameStateRef.current!,
+       sourcePlayerId: playerId,
+       card,
+       setGameState,
+       log: addLog,
+       isReversed: p?.isReversed
+     };
+  };
+
+  // --- Logic Methods (Copied/Shared from LocalGame, executed by Host) ---
+  // ... (Identical logic implementations) ...
   
   // --- Visual Events Cleanup ---
   const handleVisualEventComplete = (id: string) => {
-      setGameState(prev => {
-          if (!prev) return null;
-          return { ...prev, visualEvents: prev.visualEvents.filter(e => e.id !== id) };
-      });
+      // Only host needs to clear events from state, which then syncs to client?
+      // Yes, client just renders state.
+      if (role === 'HOST') {
+          setGameState(prev => prev ? ({ ...prev, visualEvents: prev.visualEvents.filter(e => e.id !== id) }) : null);
+      }
   };
 
-  useEffect(() => {
-    if (!gameState) return;
-    if (gameState.activeEffect || gameState.interaction) return;
-    if (gameState.pendingEffects.length === 0) return;
-    const effect = gameState.pendingEffects[0];
-    setGameState(prev => prev ? ({ ...prev, pendingEffects: prev.pendingEffects.slice(1), activeEffect: effect }) : null);
-  }, [gameState?.pendingEffects, gameState?.activeEffect, gameState?.interaction]);
+  // --- Phase Handlers (Host Only) ---
+  const onDrawPhase = () => role === 'HOST' && executeDrawPhase({ gameState, setGameState, createEffectContext });
+  const onSetPhase = () => role === 'HOST' && executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId, setP1SelectedCardId, setP2SelectedCardId });
+  const onFlip = () => role === 'HOST' && executeFlipCards({ gameState, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId });
+  const onResolve = () => role === 'HOST' && executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
+  const onDiscard = () => role === 'HOST' && executeDiscardPhase({ gameState, setGameState, createEffectContext });
 
-  const dismissActiveEffect = () => {
-     if (gameState?.activeEffect) {
-         const effect = gameState.activeEffect;
-         if (effect.type === 'ON_DRAW' && effect.card.onDraw) {
-            effect.card.onDraw(createEffectContext(effect.playerId, effect.card));
-         } else if (effect.type === 'ON_DISCARD' && effect.card.onDiscard) {
-            effect.card.onDiscard(createEffectContext(effect.playerId, effect.card));
-         }
-         setGameState(prev => prev ? ({ ...prev, activeEffect: null }) : null);
-         if (activeEffectResolverRef.current) { activeEffectResolverRef.current(); activeEffectResolverRef.current = null; }
-     }
-  };
-
-  const triggerVisualEffect = async (type: PendingEffect['type'], card: Card, pid: number, desc?: string) => {
-      return new Promise<void>((resolve) => {
-          activeEffectResolverRef.current = resolve;
-          setGameState(prev => prev ? ({ ...prev, activeEffect: { type, card, playerId: pid, description: desc } }) : null);
-      });
-  };
-
-  // --- Phase Handlers ---
-  const onDrawPhase = () => executeDrawPhase({ gameState, setGameState, createEffectContext });
-  const onSetPhase = () => executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId, setP1SelectedCardId, setP2SelectedCardId });
-  const onFlip = () => executeFlipCards({ gameState, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId });
-  const onResolve = () => executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
-  const onDiscard = () => executeDiscardPhase({ gameState, setGameState, createEffectContext });
-
-  // --- Core Game Logic (Called by processGameAction) ---
   const handleCardClickLogic = (player: PlayerState, card: Card) => {
     if (!gameState) return;
     if (gameState?.isResolving || gameState?.phase === GamePhase.GAME_OVER) return;
@@ -312,7 +367,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     if (!cardInstanceId || !gameState || gameState.isResolving) return;
     const card = player.hand.find(c => c.instanceId === cardInstanceId);
     if (!card || !card.onInstant) return;
-    // ... validation checks ...
     proceedInstantLogic(player, card);
   };
 
@@ -338,10 +392,72 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       if (player.id === 1) setP1SelectedCardId(null);
       if (player.id === 2) setP2SelectedCardId(null);
   };
-  
-  // --- Viewer Handlers ---
+
+  const dismissActiveEffect = () => {
+     // Host processes logic dismissal
+     if (role === 'HOST' && gameState?.activeEffect) {
+         const effect = gameState.activeEffect;
+         if (effect.type === 'ON_DRAW' && effect.card.onDraw) {
+            effect.card.onDraw(createEffectContext(effect.playerId, effect.card));
+         } else if (effect.type === 'ON_DISCARD' && effect.card.onDiscard) {
+            effect.card.onDiscard(createEffectContext(effect.playerId, effect.card));
+         }
+         setGameState(prev => prev ? ({ ...prev, activeEffect: null }) : null);
+         if (activeEffectResolverRef.current) { activeEffectResolverRef.current(); activeEffectResolverRef.current = null; }
+     }
+  };
+
+  const triggerVisualEffect = async (type: PendingEffect['type'], card: Card, pid: number, desc?: string) => {
+      return new Promise<void>((resolve) => {
+          activeEffectResolverRef.current = resolve;
+          setGameState(prev => prev ? ({ ...prev, activeEffect: { type, card, playerId: pid, description: desc } }) : null);
+      });
+  };
+
+  useEffect(() => {
+    if (role !== 'HOST') return;
+    if (!gameState) return;
+    if (gameState.activeEffect || gameState.interaction) return;
+    if (gameState.pendingEffects.length === 0) return;
+    const effect = gameState.pendingEffects[0];
+    setGameState(prev => prev ? ({ ...prev, pendingEffects: prev.pendingEffects.slice(1), activeEffect: effect }) : null);
+  }, [gameState?.pendingEffects, gameState?.activeEffect, gameState?.interaction, role]);
+
+  // --- Interaction Wrappers ---
+  // If I am Host, I act directly. If Client, I send request.
+  const onCardClickWrapper = (player: PlayerState, card: Card) => {
+      const myId = role === 'HOST' ? 1 : 2;
+      // Allow clicking own cards
+      if (player.id === myId) {
+          if (role === 'HOST') {
+              handleCardClickLogic(player, card);
+          } else {
+              sendNetworkMessage('PLAYER_ACTION', { actionType: 'CLICK_CARD', cardId: card.instanceId });
+          }
+      }
+  };
+
+  const onInstantClickWrapper = (playerId: number, cardId: string) => {
+      const myId = role === 'HOST' ? 1 : 2;
+      if (playerId === myId) {
+          if (role === 'HOST') {
+              const p = playerId === 1 ? gameState?.player1 : gameState?.player2;
+              if(p) handleInstantUseLogic(p, cardId);
+          } else {
+              sendNetworkMessage('PLAYER_ACTION', { actionType: 'USE_INSTANT', cardId: cardId });
+          }
+      }
+  };
+
   const openPileView = (type: 'DISCARD' | 'DECK' | 'VAULT', pid: number) => {
       if (!gameState) return;
+      // Allow viewing public piles or OWN private piles
+      const myId = role === 'HOST' ? 1 : 2;
+      
+      // Deck is private usually, but maybe allowed to view count? Logic allows viewing own deck in LocalGame.
+      // We'll allow same rules: View Own Deck, Any Discard, Any Vault.
+      if (type === 'DECK' && pid !== myId) return;
+
       const player = pid === 1 ? gameState.player1 : gameState.player2;
       let cards: Card[] = [];
       let title = "";
@@ -352,30 +468,41 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       setViewingPile({ type, pid, cards, title, sorted });
   };
 
-  // --- Test Simulation Handler ---
-  const simulateOpponentMessage = () => {
-      const oppRole = role === 'HOST' ? 'CLIENT' : 'HOST';
-      const msg: NetworkMessage = {
-          id: `sim-${Date.now()}`,
-          sender: oppRole,
-          type: 'EMOTE',
-          payload: { text: "Hello from the other side!" },
-          timestamp: Date.now()
-      };
-      receiveNetworkMessage(msg);
-  };
+  // --- RENDER ---
 
-  if (!gameState) return <div className="bg-stone-900 h-screen text-stone-400 flex items-center justify-center font-serif">Connecting...</div>;
+  if (connState !== 'CONNECTED' || !gameState) {
+      return (
+          <ConnectionScreen 
+              onCreateGame={startHosting}
+              onJoinGame={joinGame}
+              onBack={onExit}
+              isConnecting={connState === 'CONNECTING'}
+              hostId={myPeerId}
+              error={networkError}
+          />
+      );
+  }
 
   const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState;
   const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
 
-  // Conditional Lock Logic Helper (Copied from Local for now)
+  // Conditional Lock Logic Helper (Copied)
   const isCardConditionLocked = (player: PlayerState, c: Card): boolean => {
       if (c.isLocked) return true;
       if (c.isTreasure) return false;
       if (isSwordsStarActive && c.name.includes('太阳')) return false;
-      // ... Complex checks omitted for brevity in this step, but exist in logic ...
+      const lovers = player.hand.filter(x => x.marks.includes('mark-lovers') || x.marks.includes('mark-swords-lovers'));
+      const justice = player.hand.find(x => x.marks.includes('mark-justice'));
+      const wandsJustice = player.hand.find(x => x.marks.includes('mark-wands-justice'));
+      const swordsLoversCount = player.hand.filter(x => x.marks.includes('mark-swords-lovers')).length;
+      const hasWandsLoversPair = player.hand.filter(x => x.marks.includes('mark-lovers')).length >= 2;
+      const hasJustice = !!justice;
+      const hasWandsJustice = !!wandsJustice;
+      if (hasWandsLoversPair && c.marks.includes('mark-lovers')) return true;
+      if (c.marks.includes('mark-swords-lovers') && swordsLoversCount >= 2) return true;
+      if (hasJustice && !c.marks.includes('mark-justice')) return true;
+      if (hasWandsJustice && !c.marks.includes('mark-wands-justice')) return true;
+      if (c.marks.includes('mark-sun')) return true;
       return false;
   };
 
@@ -394,8 +521,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const p2MustDiscard = p2HandCount > player2.maxHandSize && !player2.skipDiscardThisTurn;
 
   const getActionButton = () => {
-    // Only Host controls phase progression buttons
-    if (role !== 'HOST') return <div className="text-sm text-stone-500 font-mono text-center w-full">等待主机操作...</div>;
+    if (role !== 'HOST') return <div className="text-sm text-stone-500 font-mono text-center w-full animate-pulse">等待主机操作...</div>;
 
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
@@ -417,6 +543,19 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     return null;
   };
 
+  // We mask the opponent's cards in the render if we are client/host
+  // Player 1 is Host. Player 2 is Client.
+  // If I am Host (P1), I see P1 cards (bottom). P2 cards (top) should be hidden if face down.
+  // Wait, PlayerArea handles face-down logic usually?
+  // LocalGame handles "label" but shows both hands face up for "Local Multiplayer" shared screen.
+  // In Online, we MUST hide opponent hand.
+  // Update: We'll modify PlayerArea logic via props? Or just rely on `isOpponent`?
+  // `isOpponent` currently just flips layout. `CardComponent` shows back if `!isFaceUp`.
+  // But hands are usually `isFaceUp={true}` in LocalGame.
+  // We need to pass `isFaceUp={false}` for opponent hand in OnlineGame.
+
+  const myId = role === 'HOST' ? 1 : 2;
+
   return (
     <div className="min-h-screen bg-stone-900 flex flex-col font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       <div className="absolute inset-0 bg-stone-900 z-0"></div>
@@ -425,17 +564,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       
       <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
 
-      {/* Top Bar */}
       <div className="absolute top-4 right-4 z-50 flex gap-3">
-         <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">
-           退出联机
-         </button>
-         <button onClick={() => setShowGallery(!showGallery)} className="text-[10px] font-serif font-bold bg-stone-900/60 text-amber-600 hover:text-amber-500 px-4 py-2 rounded border border-amber-900/30 backdrop-blur transition-all hover:shadow-[0_0_15px_rgba(180,83,9,0.2)]">
-           📖 卡牌图鉴
-         </button>
-         <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className={`text-[10px] px-3 py-2 rounded border backdrop-blur transition-colors ${showNetworkDebug ? 'bg-green-900/50 text-green-300 border-green-700' : 'bg-stone-900/60 text-stone-500 border-stone-800'}`}>
-           📡 网络日志
-         </button>
+         <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出联机</button>
+         <button onClick={() => setShowGallery(!showGallery)} className="text-[10px] font-serif font-bold bg-stone-900/60 text-amber-600 hover:text-amber-500 px-4 py-2 rounded border border-amber-900/30 backdrop-blur transition-all">📖 卡牌图鉴</button>
+         <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className={`text-[10px] px-3 py-2 rounded border backdrop-blur transition-colors ${showNetworkDebug ? 'bg-green-900/50 text-green-300 border-green-700' : 'bg-stone-900/60 text-stone-500 border-stone-800'}`}>📡 网络日志</button>
       </div>
 
       {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
@@ -449,12 +581,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           />
       )}
 
-      {/* Network Debug Overlay (Exclusive to Online Mode) */}
       {showNetworkDebug && (
           <NetworkDebugOverlay 
              logs={networkLogs}
              role={role}
-             onSimulateReceive={simulateOpponentMessage}
+             onSimulateReceive={() => {}}
              onClearLogs={() => setNetworkLogs([])}
              onClose={() => setShowNetworkDebug(false)}
           />
@@ -462,11 +593,18 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
       {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
       {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
-      {interaction && <InteractionOverlay request={interaction} />}
+      {interaction && (
+          // Only show interaction if it belongs to me!
+          (interaction.playerId === myId) ? <InteractionOverlay request={interaction} /> : 
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
+              <div className="bg-stone-900 p-4 rounded-xl border border-amber-500/30 text-amber-500 animate-pulse font-bold">
+                  对手正在进行抉择...
+              </div>
+          </div>
+      )}
 
       <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
       
-      {/* Status Ticker - Online Mode Indicator */}
       <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30 flex justify-between px-8">
          <div className="flex items-center">
             <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
@@ -478,19 +616,15 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
             </span>
          </div>
          <div className="flex items-center gap-4">
-             {gameState.field && (
-                 <span className="text-emerald-500 font-serif font-bold">
-                     🏟️ {gameState.field.card.name} (P{gameState.field.ownerId})
-                 </span>
-             )}
-             <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setRole(r => r === 'HOST' ? 'CLIENT' : 'HOST')}>
-                 <span className={`w-2 h-2 rounded-full ${role === 'HOST' ? 'bg-green-500' : 'bg-blue-500'} animate-pulse`}></span>
-                 <span className="text-xs font-bold text-stone-400 uppercase">{role}</span>
+             {gameState.field && <span className="text-emerald-500 font-serif font-bold">🏟️ {gameState.field.card.name} (P{gameState.field.ownerId})</span>}
+             <div className="flex items-center gap-1.5">
+                 <span className={`w-2 h-2 rounded-full bg-green-500 animate-pulse`}></span>
+                 <span className="text-xs font-bold text-stone-400 uppercase">{role} ID: {myPeerId?.slice(0,6)}...</span>
              </div>
          </div>
       </div>
 
-      {isResolving && !activeEffect && !interaction && (
+      {isResolving && !activeEffect && (!interaction || interaction.playerId !== myId) && (
          <div className="absolute inset-0 z-[45] flex items-center justify-center pointer-events-none">
             <div className="bg-black/70 text-amber-500 px-8 py-4 rounded-xl text-lg font-serif font-bold shadow-2xl backdrop-blur-md border border-amber-900/30 animate-pulse">
                同步中...
@@ -498,31 +632,59 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
          </div>
       )}
 
-      {/* Game Board */}
       <div className="flex-grow flex flex-col relative overflow-hidden z-10">
-        <PlayerArea 
-          player={player2} isOpponent phase={phase} 
-          selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
-          canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => onCardClickWrapper(player2, c)} 
-          onInstant={(id) => onInstantClickWrapper(player2.id, id)}
-          onViewDiscard={() => openPileView('DISCARD', 2)}
-          onViewDeck={() => openPileView('DECK', 2)}
-          onViewVault={() => openPileView('VAULT', 2)}
-        />
+        {/* Opponent Area (Player 2 if I am P1/Host, Player 1 if I am P2/Client) */}
+        {/* We need to render correct player at top based on Role */}
+        {role === 'HOST' ? (
+            <PlayerArea 
+              player={player2} isOpponent phase={phase} 
+              selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
+              canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => onCardClickWrapper(player2, c)} 
+              onInstant={(id) => onInstantClickWrapper(player2.id, id)}
+              onViewDiscard={() => openPileView('DISCARD', 2)}
+              onViewDeck={() => openPileView('DECK', 2)}
+              onViewVault={() => openPileView('VAULT', 2)}
+            />
+        ) : (
+            <PlayerArea 
+              player={player1} isOpponent phase={phase} 
+              selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
+              canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => onCardClickWrapper(player1, c)} 
+              onInstant={(id) => onInstantClickWrapper(player1.id, id)}
+              onViewDiscard={() => openPileView('DISCARD', 1)}
+              onViewDeck={() => openPileView('DECK', 1)}
+              onViewVault={() => openPileView('VAULT', 1)}
+            />
+        )}
         
         <FieldArea gameState={gameState} player1={player1} player2={player2} />
 
-        <PlayerArea 
-          player={player1} phase={phase} 
-          selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
-          canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => onCardClickWrapper(player1, c)} 
-          onInstant={(id) => onInstantClickWrapper(player1.id, id)}
-          onViewDiscard={() => openPileView('DISCARD', 1)}
-          onViewDeck={() => openPileView('DECK', 1)}
-          onViewVault={() => openPileView('VAULT', 1)}
-        />
+        {/* My Area */}
+        {role === 'HOST' ? (
+            <PlayerArea 
+              player={player1} phase={phase} 
+              selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
+              canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => onCardClickWrapper(player1, c)} 
+              onInstant={(id) => onInstantClickWrapper(player1.id, id)}
+              onViewDiscard={() => openPileView('DISCARD', 1)}
+              onViewDeck={() => openPileView('DECK', 1)}
+              onViewVault={() => openPileView('VAULT', 1)}
+            />
+        ) : (
+            <PlayerArea 
+              player={player2} phase={phase} 
+              selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
+              canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => onCardClickWrapper(player2, c)} 
+              onInstant={(id) => onInstantClickWrapper(player2.id, id)}
+              onViewDiscard={() => openPileView('DISCARD', 2)}
+              onViewDeck={() => openPileView('DECK', 2)}
+              onViewVault={() => openPileView('VAULT', 2)}
+            />
+        )}
       </div>
 
       <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex gap-6 h-40 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative">
