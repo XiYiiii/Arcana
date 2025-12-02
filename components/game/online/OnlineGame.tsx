@@ -323,6 +323,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           executeDrawPhase({ gameState: gs, setGameState, createEffectContext });
       } 
       else if (gs.phase === GamePhase.SET) {
+          // Debugging set phase
+          console.log("[HOST] Executing Set Phase. P1 Selection:", p1SelectedCardId, "P2 Selection:", p2SelectedCardIdRef.current);
+          
           executeSetPhase({ 
               setGameState, 
               p1SelectedCardId, 
@@ -389,6 +392,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
       if (action.actionType === 'UPDATE_SELECTION') {
           if (playerId === 2) {
+              // Ensure we are not setting null/undefined if it's meant to be a selection
+              // If client sends explicit null (deselect), it's fine.
               p2SelectedCardIdRef.current = action.cardId || null;
               setP2SelectedCardId(action.cardId || null);
           }
