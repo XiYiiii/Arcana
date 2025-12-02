@@ -161,7 +161,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               // IMPORTANT: Hydrate the state to re-attach functions
               const syncedState = hydrateGameState(msg.payload);
               setGameState(prev => {
-                  // Client uses synced state, but local UI selection (p2SelectedCardId) is kept separate
+                  // Client uses synced state
                   return syncedState;
               });
           }
@@ -280,14 +280,15 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
       console.log(`[HOST] Processing Action from P${playerId}:`, action);
 
-      if (action.actionType === 'CLICK_CARD' && action.cardId) {
-          // Host records P2 selection for potential Phase Logic usage (Set Phase)
+      if (action.actionType === 'UPDATE_SELECTION') {
+          // Host records P2 selection based on what client sent (Absolute Update)
+          // cardId can be null, which means deselect
           if (playerId === 2) {
-              setP2SelectedCardId(action.cardId);
+              setP2SelectedCardId(action.cardId || null);
           }
           
-          // Execute Discard Logic immediately if phase matches (like LocalGame)
-          if (gs.phase === GamePhase.DISCARD) {
+          // Execute Discard Logic immediately if phase matches and cardId is present
+          if (gs.phase === GamePhase.DISCARD && action.cardId) {
               const card = player.hand.find(c => c.instanceId === action.cardId);
               if (card && !card.isTreasure) {
                   const handCount = player.hand.filter(c => !c.isTreasure).length;
@@ -362,7 +363,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               executeDiscardPhase({ gameState, setGameState, createEffectContext });
           }
       }
-  }, [gameState?.playerReadyState, gameState?.phase, gameState?.instantWindow, role]);
+  }, [gameState?.playerReadyState, gameState?.phase, gameState?.instantWindow, role, p1SelectedCardId, p2SelectedCardId]);
 
 
   // --- Logic Helpers (Host Only) ---
@@ -419,14 +420,21 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     if (gameState?.isResolving || gameState?.phase === GamePhase.GAME_OVER) return;
 
     // 1. Update Local UI Selection (Instant Feedback)
-    if (myId === 1) setP1SelectedCardId(card.instanceId === p1SelectedCardId ? null : card.instanceId);
-    if (myId === 2) setP2SelectedCardId(card.instanceId === p2SelectedCardId ? null : card.instanceId);
+    let newSelectionId: string | null = null;
+    if (myId === 1) {
+        newSelectionId = card.instanceId === p1SelectedCardId ? null : card.instanceId;
+        setP1SelectedCardId(newSelectionId);
+    } else {
+        newSelectionId = card.instanceId === p2SelectedCardId ? null : card.instanceId;
+        setP2SelectedCardId(newSelectionId);
+    }
 
     // 2. Send Action to Host (if Client) or Process Locally (if Host)
     if (role === 'CLIENT') {
-        sendNetworkMessage('PLAYER_ACTION', { actionType: 'CLICK_CARD', cardId: card.instanceId });
+        // IMPORTANT: Send the absolute state (newSelectionId) instead of just "I clicked this".
+        sendNetworkMessage('PLAYER_ACTION', { actionType: 'UPDATE_SELECTION', cardId: newSelectionId });
     } else {
-        // Host logic for Discard Phase (Host handles logic immediately for clicks in discard)
+        // Host logic for Discard Phase
         if (gameState.phase === GamePhase.DISCARD) {
              if (card.isTreasure) {
                  addLog(`[规则] 宝藏牌无法被弃置！`);
@@ -443,8 +451,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   const handleInstantUse = (cardInstanceId: string) => {
       // Send intent to use instant
-      const myId = role === 'HOST' ? 1 : 2;
-      
       if (role === 'HOST') {
           if (!gameState) return;
           const player = gameState.player1;
@@ -469,9 +475,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
        addLog(`P${player.id}: 当前时机无法使用此卡的插入效果。`);
        return;
     }
-
-    // Logic for Moon Interruption... (Simplified for online: just proceed for now to avoid complex async interaction dialogs across network for V1)
-    // TODO: Implement Moon Interruption properly over network
     
     setGameState(prev => prev ? ({ ...prev, isResolving: true }) : null);
     await triggerVisualEffect('INSTANT', card, player.id, "发动插入特效！");
@@ -498,15 +501,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           return { ...prev, isResolving: false };
     });
 
-    // Reset selection logic handled by local UI state mostly
-  };
-
-  const toggleReady = () => {
-      if (role === 'HOST') {
-          handleToggleReady(1);
-      } else {
-          sendNetworkMessage('PLAYER_ACTION', { actionType: 'TOGGLE_READY' });
-      }
+    if (player.id === 1) setP1SelectedCardId(null);
+    else setP2SelectedCardId(null); // Host resets P2 tracking if needed
   };
   
   // --- Viewer Handlers ---
@@ -522,35 +518,46 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           cards = player.discardPile;
           title = `${player.name} 的弃牌堆`;
       } else if (type === 'DECK') {
-          // Allow viewing OWN deck only? Or allow public knowledge? 
-          // LocalGame allows viewing. Let's allow for now.
+          // In Online mode, you can only see your own deck usually, or if allowed by effect
+          // Here strictly debugging/viewing own deck? 
+          if (pid !== (role === 'HOST' ? 1 : 2)) {
+              return; // Cannot view opponent deck freely
+          }
           cards = player.deck;
           title = `${player.name} 的抽牌堆 (查看)`;
-          sorted = true; 
+          sorted = true;
       } else if (type === 'VAULT') {
           const treasures = CARD_DEFINITIONS.filter(c => c.isTreasure).map(t => ({...t, instanceId: `vault-${t.id}`, marks: [], description: t.description || ""}));
           cards = treasures;
-          title = `${player.name} 的宝库`; 
+          title = `${player.name} 的宝库`;
       }
       
       setViewingPile({ type, pid, cards, title, sorted });
   };
 
-  // --- Render ---
+  // --- Ready Button Handler ---
+  const handleReadyClick = () => {
+      const myId = role === 'HOST' ? 1 : 2;
+      
+      if (role === 'HOST') {
+          handleToggleReady(1);
+      } else {
+          sendNetworkMessage('PLAYER_ACTION', { actionType: 'TOGGLE_READY' });
+      }
+  };
+
+  // --- Main Render Logic ---
 
   if (connState !== 'CONNECTED' || !gameState) {
       return (
-          <>
-            {showNetworkDebug && <NetworkDebugOverlay logs={networkLogs} role={role} onSimulateReceive={()=>{}} onClearLogs={() => setNetworkLogs([])} onClose={() => setShowNetworkDebug(false)} />}
-            <ConnectionScreen 
-                onCreateGame={startHosting} 
-                onJoinGame={joinGame} 
-                onBack={onExit} 
-                isConnecting={connState === 'CONNECTING' || connState === 'HOSTING'} 
-                hostId={myPeerId}
-                error={networkError}
-            />
-          </>
+          <ConnectionScreen 
+              onCreateGame={startHosting}
+              onJoinGame={joinGame}
+              onBack={onExit}
+              isConnecting={connState === 'CONNECTING' || connState === 'HOSTING'}
+              hostId={myPeerId}
+              error={networkError}
+          />
       );
   }
 
@@ -559,108 +566,88 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const myPlayer = myId === 1 ? player1 : player2;
   const oppPlayer = myId === 1 ? player2 : player1;
   
-  // Check conditions for buttons
-  const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
-  
-  // Helper to check lock status (Duplicated from LocalGame)
-  const isCardConditionLocked = (player: PlayerState, c: Card): boolean => {
-      if (c.isLocked) return true; 
-      if (c.isTreasure) return false;
-      if (isSwordsStarActive && c.name.includes('太阳')) return false;
-      // ... (Simplified: assume basic lock check for brevity, logic resides in LocalGame primarily but visual check helpful here)
-      return !!c.isLocked;
-  };
-
-  // Selection Check
+  // Selection Logic for Ready Button enablement
   const mySelectionId = myId === 1 ? p1SelectedCardId : p2SelectedCardId;
-  const mySelectedCard = myPlayer.hand.find(c => c.instanceId === mySelectionId);
+  const myHand = myPlayer.hand;
+  const myHandCount = myHand.filter(c => !c.isTreasure).length;
   
-  const canSet = myPlayer.hand.length > 0 ? (mySelectedCard && (mySelectedCard.canSet !== false || (isSwordsStarActive && mySelectedCard.name.includes('太阳'))) && !isCardConditionLocked(myPlayer, mySelectedCard)) : true;
-  const canInstant = mySelectedCard && mySelectedCard.canInstant?.(instantWindow) && !mySelectedCard.isLocked;
-  
-  const handCount = myPlayer.hand.filter(c => !c.isTreasure).length;
-  const mustDiscard = handCount > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
+  let canReady = true;
+  if (phase === GamePhase.SET) {
+      // Must select a card to set unless hand is empty
+      if (myHand.length > 0 && !mySelectionId) canReady = false;
+  } else if (phase === GamePhase.DISCARD) {
+      // Must discard if over limit
+      const mustDiscard = myHandCount > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
+      if (mustDiscard) canReady = false; // Cannot end turn if need to discard
+  }
 
-  // Ready Button Logic
-  const amIReady = playerReadyState[myId];
-  const isOpponentReady = playerReadyState[myId === 1 ? 2 : 1];
+  const myReady = playerReadyState[myId];
+  const oppReady = playerReadyState[myId === 1 ? 2 : 1];
 
   const getActionButton = () => {
-    if (phase === GamePhase.GAME_OVER) {
-        return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
+    if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
+    
+    // Waiting for opponent visual
+    if (myReady && !oppReady) {
+        return (
+            <div className="flex flex-col items-center gap-2">
+                <button 
+                    onClick={handleReadyClick} 
+                    className="w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all border-b-4 bg-emerald-800 text-emerald-200 border-emerald-950 active:translate-y-1 active:border-b-0"
+                >
+                    已准备 (取消)
+                </button>
+                <span className="text-[10px] text-stone-500 animate-pulse">等待对方...</span>
+            </div>
+        );
+    }
+
+    if (myReady && oppReady) {
+        return <div className="text-emerald-500 font-bold animate-pulse">同步中...</div>;
     }
 
     const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
-    const readyClasses = amIReady 
-        ? "bg-green-700 hover:bg-green-600 text-green-100 border-green-900 shadow-green-900/30" 
-        : "bg-stone-700 hover:bg-stone-600 text-stone-200 border-stone-900";
+    const disabledClasses = "bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed";
+    const readyClasses = "bg-stone-700 hover:bg-stone-600 hover:shadow-stone-500/20 text-stone-200 border-stone-900";
 
-    // Discard Phase Special: Block ready if must discard
-    if (phase === GamePhase.DISCARD && mustDiscard) {
-        return <button disabled className={`${commonClasses} bg-stone-800 text-red-400 border-stone-950 cursor-not-allowed`}>请先弃牌</button>;
-    }
-
-    // Set Phase Special: Block ready if not selected card (unless hand empty)
-    if (phase === GamePhase.SET && myPlayer.hand.length > 0 && !canSet) {
-         return <button disabled className={`${commonClasses} bg-stone-800 text-stone-500 border-stone-950 cursor-not-allowed`}>请选择卡牌</button>;
-    }
-
-    const label = amIReady ? "取消准备" : "准备 (Ready)";
-    
     return (
-        <button onClick={toggleReady} className={`${commonClasses} ${readyClasses}`}>
-            {label}
+        <button 
+            onClick={handleReadyClick} 
+            disabled={!canReady}
+            className={`${commonClasses} ${!canReady ? disabledClasses : readyClasses}`}
+        >
+            {phase === GamePhase.SET && !canReady ? "请先盖牌" : 
+             phase === GamePhase.DISCARD && !canReady ? "请先弃牌" : 
+             "准备 (Ready)"}
         </button>
     );
   };
 
   return (
     <div className="min-h-screen bg-stone-900 flex flex-col font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
-      
-      {/* Unified Background */}
       <div className="absolute inset-0 bg-stone-900 z-0"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
       <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
       
-      {/* Visual Effects Layer */}
       <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
 
       {/* Top Bar */}
       <div className="absolute top-4 right-4 z-50 flex gap-3">
-         <div className="px-3 py-2 rounded bg-stone-900/80 border border-indigo-500/30 text-[10px] text-indigo-300 flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-             {role === 'HOST' ? 'HOST (P1)' : 'CLIENT (P2)'}
+         <div className="flex items-center gap-2 px-3 py-2 bg-stone-900/60 rounded border border-stone-800 backdrop-blur text-[10px]">
+             <span className={`w-2 h-2 rounded-full ${connState==='CONNECTED'?'bg-emerald-500':'bg-red-500'}`}></span>
+             <span className="text-stone-400 font-bold">{role === 'HOST' ? '主机' : '客机'}</span>
          </div>
-         <button 
-           onClick={onExit} 
-           className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur"
-         >
-           退出
-         </button>
-         <button 
-           onClick={() => setShowNetworkDebug(!showNetworkDebug)} 
-           className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur"
-         >
-           网络调试
-         </button>
+         <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出</button>
+         <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className="text-[10px] bg-stone-900/60 text-blue-400 px-3 py-2 rounded border border-blue-900/30 backdrop-blur">网络</button>
       </div>
 
-      {showNetworkDebug && <NetworkDebugOverlay logs={networkLogs} role={role} onSimulateReceive={()=>{}} onClearLogs={() => setNetworkLogs([])} onClose={() => setShowNetworkDebug(false)} />}
+      {showNetworkDebug && <NetworkDebugOverlay logs={networkLogs} role={role} onSimulateReceive={()=>{}} onClearLogs={()=>setNetworkLogs([])} onClose={()=>setShowNetworkDebug(false)} />}
       {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
-      
-      {viewingPile && (
-          <CardPileOverlay 
-              title={viewingPile.title} 
-              cards={viewingPile.cards} 
-              onClose={() => setViewingPile(null)} 
-              sorted={viewingPile.sorted}
-          />
-      )}
+      {viewingPile && <CardPileOverlay title={viewingPile.title} cards={viewingPile.cards} onClose={() => setViewingPile(null)} sorted={viewingPile.sorted} />}
 
-      {/* Overlays */}
       {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
       {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
-      {interaction && interaction.playerId === myId && <InteractionOverlay request={interaction} />}
+      {interaction && <InteractionOverlay request={interaction} />}
 
       <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
       
@@ -673,14 +660,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
              instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
              instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
          </span>
-         {gameState.field && (
-             <span className="ml-4 text-emerald-500 font-serif font-bold">
-                 🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
-             </span>
-         )}
+         <span className="ml-4 text-xs font-bold text-indigo-400">
+             [我方: {myReady ? '✅' : '⏳'}] [对方: {oppReady ? '✅' : '⏳'}]
+         </span>
       </div>
 
-      {isResolving && !activeEffect && !(interaction && interaction.playerId === myId) && (
+      {isResolving && !activeEffect && !interaction && (
          <div className="absolute inset-0 z-[45] flex items-center justify-center pointer-events-none">
             <div className="bg-black/70 text-amber-500 px-8 py-4 rounded-xl text-lg font-serif font-bold shadow-2xl backdrop-blur-md border border-amber-900/30 animate-pulse">
                同步处理中...
@@ -689,27 +674,25 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       )}
 
       <div className="flex-grow flex flex-col relative overflow-hidden z-10">
-        {/* Opponent Area (Top) */}
         <PlayerArea 
           player={oppPlayer} isOpponent phase={phase} 
-          selectedCardId={myId === 1 ? p2SelectedCardId : p1SelectedCardId} // Show what Host knows, or what Client sees? Actually client shouldn't see Host selection in Set phase.
-          // Fix logic: Only show opponent selection if NOT set phase or if revealed?
-          // Actually PlayerArea handles hidden cards. Border logic is fine.
-          mustDiscard={false} // Only relevant for self
+          selectedCardId={null} mustDiscard={false} // Opponent UI usually static/hidden
           canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={() => {}} onInstant={() => {}}
+          onSelect={(c) => {}} onInstant={(id) => {}}
           onViewDiscard={() => openPileView('DISCARD', oppPlayer.id)}
-          onViewDeck={() => openPileView('DECK', oppPlayer.id)}
+          onViewDeck={() => {}} // Cannot view opp deck
           onViewVault={() => openPileView('VAULT', oppPlayer.id)}
         />
         
         <FieldArea gameState={gameState} player1={player1} player2={player2} />
 
-        {/* My Area (Bottom) */}
         <PlayerArea 
           player={myPlayer} phase={phase} 
-          selectedCardId={mySelectionId} mustDiscard={mustDiscard}
-          canSet={canSet} canInstant={!!canInstant} isResolving={isResolving} instantWindow={instantWindow}
+          selectedCardId={mySelectionId} 
+          mustDiscard={myHandCount > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn}
+          canSet={phase === GamePhase.SET} 
+          canInstant={instantWindow !== InstantWindow.NONE} 
+          isResolving={isResolving} instantWindow={instantWindow}
           onSelect={(c) => handleCardClick(myPlayer, c)} 
           onInstant={(id) => handleInstantUse(id)}
           onViewDiscard={() => openPileView('DISCARD', myPlayer.id)}
@@ -722,11 +705,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex gap-6 h-40 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative">
          <div className="w-1/3 max-w-xs flex flex-col items-center justify-center border-r border-stone-800/50 pr-4">
             {getActionButton()}
-            <div className="mt-2 text-[10px] flex gap-2">
-                <span className={amIReady ? "text-green-400" : "text-stone-500"}>我方: {amIReady ? "已准备" : "未准备"}</span>
-                <span className="text-stone-600">|</span>
-                <span className={isOpponentReady ? "text-green-400" : "text-stone-500"}>对方: {isOpponentReady ? "已准备" : "未准备"}</span>
-            </div>
          </div>
          <div className="w-2/3 flex-grow overflow-y-auto font-mono text-[10px] space-y-1 pl-2 mask-image-gradient-b">
             {gameState.logs.map((log, i) => (
