@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Peer, { DataConnection } from 'peerjs';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
 import { NetworkMessage, NetworkRole, GameActionPayload } from '../../../types/network'; 
-import { generateDeck, shuffleDeck } from '../../../services/gameUtils';
+import { generateDeck, shuffleDeck, sanitizeGameState, hydrateGameState } from '../../../services/gameUtils';
 import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress } from '../../../services/actions'; 
 import { MAX_HAND_SIZE, INITIAL_ATK } from '../../../constants';
 import { CARD_DEFINITIONS } from '../../../data/cards';
@@ -123,23 +123,23 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           return;
       }
 
+      // IMPORTANT: Sanitize payload if it's a game state
+      const safePayload = type === 'GAME_STATE_SYNC' ? sanitizeGameState(payload) : payload;
+
       const msg: NetworkMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
           sender: role,
           type,
-          payload,
+          payload: safePayload,
           timestamp: Date.now()
       };
 
-      addNetworkLog(msg);
-      connRef.current.send(msg);
-
-      // If I am Host and I send an ACTION, I need to process it myself too (Loopback logic for Host Actions)
-      // Actually, Host logic usually triggers on receipt.
-      // If Host UI triggers "Click Card", it should probably call processGameAction directly AND broadcast sync?
-      // Better: Host UI calls `processGameAction`. `processGameAction` updates state.
-      // We broadcast `GAME_STATE_SYNC` after state updates.
-      // BUT for `PLAYER_ACTION` messages from Client, we process them then broadcast sync.
+      try {
+          addNetworkLog(msg);
+          connRef.current.send(msg);
+      } catch (e) {
+          console.error("Send Error:", e);
+      }
   };
 
   const handleDataReceive = (data: any) => {
@@ -156,10 +156,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       } else {
           // CLIENT Logic
           if (msg.type === 'GAME_STATE_SYNC') {
-              const syncedState = msg.payload as GameState;
-              // Merge visual events to not lose animations that happened between syncs?
-              // Or just overwrite. Overwriting is safer for consistency.
-              // But we might want to preserve local UI state if needed.
+              // IMPORTANT: Hydrate the state to re-attach functions
+              const syncedState = hydrateGameState(msg.payload);
               setGameState(syncedState);
           }
       }
@@ -168,8 +166,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   // --- Peer Setup Handlers ---
 
   const setupPeer = (): Peer => {
-      // Create a random short ID for easier typing if possible, but PeerJS usually handles collisions.
-      // We'll let PeerJS generate one or use a prefix.
       const id = `arcana-${Math.floor(Math.random() * 10000)}`;
       const peer = new Peer(id);
       
@@ -224,15 +220,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               // Host initializes game and sends initial state
               const newState = initializeGame();
               setGameState(newState);
-              // Send initial sync
-              setTimeout(() => {
-                  if (connRef.current?.open) {
-                      const msg: NetworkMessage = {
-                          id: 'init-sync', sender: 'HOST', type: 'GAME_STATE_SYNC', payload: newState, timestamp: Date.now()
-                      };
-                      connRef.current.send(msg);
-                  }
-              }, 500);
+              // Send initial sync triggered by useEffect when gameState changes
           }
       });
 
@@ -255,32 +243,25 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   // --- Logic Helpers ---
 
   // Host executes logic, then syncs state to client
-  // Wrapper to automatically sync after logic updates
-  // Since `setGameState` is async and we use functional updates, 
-  // we use a useEffect to detect state changes and broadcast SYNC if we are HOST.
   useEffect(() => {
       if (role === 'HOST' && connState === 'CONNECTED' && gameState) {
-          // Broadcast State
-          // Debounce slightly to avoid flooding? Or just send on every render?
-          // React renders often. We should probably only sync when significant things happen.
-          // Or we wrap `setGameState`?
-          // Using `useEffect` on gameState is easiest but might be heavy.
-          // Let's rely on `useEffect` but maybe check if it's "resolving" to avoid intermediate flicker?
-          // Actually, instant sync is best for responsiveness.
-          
           // Construct message
+          const safePayload = sanitizeGameState(gameState);
+          
           const msg: NetworkMessage = {
               id: `sync-${Date.now()}`,
               sender: 'HOST',
               type: 'GAME_STATE_SYNC',
-              payload: gameState,
+              payload: safePayload,
               timestamp: Date.now()
           };
           
-          // We don't log every sync to internal log array to save memory/noise, unless debug is very deep
-          // But we send it.
           if (connRef.current?.open) {
-              connRef.current.send(msg);
+              try {
+                  connRef.current.send(msg);
+              } catch(e) {
+                  console.error("Sync Failed:", e);
+              }
           }
       }
   }, [gameState, role, connState]);
@@ -323,12 +304,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   // --- Logic Methods (Copied/Shared from LocalGame, executed by Host) ---
-  // ... (Identical logic implementations) ...
   
   // --- Visual Events Cleanup ---
   const handleVisualEventComplete = (id: string) => {
-      // Only host needs to clear events from state, which then syncs to client?
-      // Yes, client just renders state.
+      // Host handles cleanup, which syncs to client. Client just plays animation locally.
+      // But client needs to know when to clear local visual events queue? 
+      // Actually client receives FULL STATE sync. So if Host clears it, Client clears it.
       if (role === 'HOST') {
           setGameState(prev => prev ? ({ ...prev, visualEvents: prev.visualEvents.filter(e => e.id !== id) }) : null);
       }
@@ -451,11 +432,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   const openPileView = (type: 'DISCARD' | 'DECK' | 'VAULT', pid: number) => {
       if (!gameState) return;
-      // Allow viewing public piles or OWN private piles
       const myId = role === 'HOST' ? 1 : 2;
-      
-      // Deck is private usually, but maybe allowed to view count? Logic allows viewing own deck in LocalGame.
-      // We'll allow same rules: View Own Deck, Any Discard, Any Vault.
+      // Allow viewing public piles or OWN private piles
       if (type === 'DECK' && pid !== myId) return;
 
       const player = pid === 1 ? gameState.player1 : gameState.player2;
@@ -486,7 +464,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState;
   const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
 
-  // Conditional Lock Logic Helper (Copied)
+  // Conditional Lock Logic Helper (Copied from LocalGame, needed for Client UI state)
   const isCardConditionLocked = (player: PlayerState, c: Card): boolean => {
       if (c.isLocked) return true;
       if (c.isTreasure) return false;
@@ -543,19 +521,52 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     return null;
   };
 
-  // We mask the opponent's cards in the render if we are client/host
-  // Player 1 is Host. Player 2 is Client.
-  // If I am Host (P1), I see P1 cards (bottom). P2 cards (top) should be hidden if face down.
-  // Wait, PlayerArea handles face-down logic usually?
-  // LocalGame handles "label" but shows both hands face up for "Local Multiplayer" shared screen.
-  // In Online, we MUST hide opponent hand.
-  // Update: We'll modify PlayerArea logic via props? Or just rely on `isOpponent`?
-  // `isOpponent` currently just flips layout. `CardComponent` shows back if `!isFaceUp`.
-  // But hands are usually `isFaceUp={true}` in LocalGame.
-  // We need to pass `isFaceUp={false}` for opponent hand in OnlineGame.
-
   const myId = role === 'HOST' ? 1 : 2;
 
+  // Masking Opponent Hand Logic
+  // We create a "masked" version of the opponent's hand to pass to PlayerArea.
+  // Note: We don't change the actual 'player' object in state, just what we render.
+  const maskHand = (p: PlayerState) => ({
+      ...p,
+      hand: p.hand.map(c => ({ ...c, isFaceUp: false })) // We'll handle this visually in CardComponent? No, CardComponent takes `isFaceUp` prop.
+      // Wait, PlayerArea maps through hand and sets `isFaceUp={true}` hardcoded.
+      // We can't easily override it without changing PlayerArea.
+      // BUT `PlayerArea` takes `player` object. 
+      // If we want to hide cards, we can pass a player object where cards are "hidden" (e.g. dummy cards) 
+      // OR we rely on `isOpponent` inside PlayerArea?
+      // PlayerArea `isOpponent` just flips layout.
+      // Let's modify PlayerArea logic? No, let's keep it simple.
+      // We will render the masked player area by creating a new component or modifying CardComponent logic?
+      // Actually, CardComponent respects `card` data. But `Card` model doesn't have `isFaceUp` property usually (it's a prop).
+      // Solution: Pass a modified `PlayerArea` usage in OnlineGame? 
+      // No, let's just accept that for now we render them face up but if we want them hidden, we should modify `PlayerArea` to accept `hideHand` prop.
+      // But I cannot modify PlayerArea in this turn (per strict instructions usually, though I can if needed).
+      // Let's modify `PlayerArea.tsx` slightly? No, I only updated OnlineGame and gameUtils.
+      // I will leave it as "Face Up" for now to debug connection first, or...
+      // Actually, standard `PlayerArea` implementation in `components/PlayerArea.tsx` sets `isFaceUp={true}`.
+      // To fix visibility without changing PlayerArea, I can replace the cards in opponent's hand with "Back of Card" dummy cards in the render prop!
+  });
+
+  // Prepare players for render
+  // If I am Host (P1), P2 is opponent. I should not see P2 cards.
+  // If I am Client (P2), P1 is opponent. I should not see P1 cards.
+  const player1ForRender = role === 'HOST' ? player1 : {
+      ...player1,
+      hand: player1.hand.map(c => ({...c, name: '???', description: '', keywords: [], suit: 'EMPTY' as any, rank: 0, isLocked: false})) // Masked P1 for Client
+  };
+  
+  const player2ForRender = role === 'CLIENT' ? player2 : {
+      ...player2,
+      hand: player2.hand.map(c => ({...c, name: '???', description: '', keywords: [], suit: 'EMPTY' as any, rank: 0, isLocked: false})) // Masked P2 for Host
+  };
+  
+  // Wait, if I mask them completely, `CardComponent` renders "Card Back"?
+  // CardComponent renders Back if `!isFaceUp`. PlayerArea forces `isFaceUp={true}`.
+  // So it will render a card with "???" name. That's acceptable for now to indicate "Hidden".
+  // Better: If I want to show Card Back, I need to control `isFaceUp`.
+  // Since I can't change PlayerArea in this step easily without touching more files... 
+  // Let's stick to the "???" card for opponent to verify "Data Hiding".
+  
   return (
     <div className="min-h-screen bg-stone-900 flex flex-col font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       <div className="absolute inset-0 bg-stone-900 z-0"></div>
@@ -594,7 +605,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
       {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
       {interaction && (
-          // Only show interaction if it belongs to me!
           (interaction.playerId === myId) ? <InteractionOverlay request={interaction} /> : 
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
               <div className="bg-stone-900 p-4 rounded-xl border border-amber-500/30 text-amber-500 animate-pulse font-bold">
@@ -633,13 +643,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       )}
 
       <div className="flex-grow flex flex-col relative overflow-hidden z-10">
-        {/* Opponent Area (Player 2 if I am P1/Host, Player 1 if I am P2/Client) */}
-        {/* We need to render correct player at top based on Role */}
+        {/* Opponent Area */}
         {role === 'HOST' ? (
             <PlayerArea 
-              player={player2} isOpponent phase={phase} 
+              player={player2ForRender} isOpponent phase={phase} 
               selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
-              canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
+              canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
               onSelect={(c) => onCardClickWrapper(player2, c)} 
               onInstant={(id) => onInstantClickWrapper(player2.id, id)}
               onViewDiscard={() => openPileView('DISCARD', 2)}
@@ -648,9 +657,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
             />
         ) : (
             <PlayerArea 
-              player={player1} isOpponent phase={phase} 
+              player={player1ForRender} isOpponent phase={phase} 
               selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
-              canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
+              canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
               onSelect={(c) => onCardClickWrapper(player1, c)} 
               onInstant={(id) => onInstantClickWrapper(player1.id, id)}
               onViewDiscard={() => openPileView('DISCARD', 1)}
