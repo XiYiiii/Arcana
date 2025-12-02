@@ -121,6 +121,7 @@ export interface GameState {
   turnCount: number;
   player1: PlayerState;
   player2: PlayerState;
+  playerReadyState: { [key: number]: boolean }; // Track readiness for next phase
   field: FieldState | null; // The global field card
   logs: string[];
   isResolving: boolean; 

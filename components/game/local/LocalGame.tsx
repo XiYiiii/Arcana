@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
 import { generateDeck, shuffleDeck } from '../../../services/gameUtils';
@@ -100,6 +101,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
         logs: ["游戏开始。", `初始生命: ${initialHp}, 手牌: ${initialHandSize}`],
         player1: initialPlayerState(1, p1Deck, p1Hand),
         player2: initialPlayerState(2, p2Deck, p2Hand),
+        playerReadyState: { 1: false, 2: false },
         field: null,
         isResolving: false,
         pendingEffects: [],

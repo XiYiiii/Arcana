@@ -102,6 +102,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         logs: ["(联机模式) 游戏开始。"],
         player1: initialPlayerState(1, p1Deck, p1Hand),
         player2: initialPlayerState(2, p2Deck, p2Hand),
+        playerReadyState: { 1: false, 2: false },
         field: null,
         isResolving: false,
         pendingEffects: [],
@@ -284,6 +285,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       else if (action.actionType === 'USE_INSTANT' && action.cardId) {
           handleInstantUseLogic(player, action.cardId);
       }
+      else if (action.actionType === 'TOGGLE_READY') {
+          handleToggleReady(playerId);
+      }
   };
 
   // --- Standard Game Logic (Host Only) ---
@@ -303,24 +307,77 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
      };
   };
 
-  // --- Logic Methods (Copied/Shared from LocalGame, executed by Host) ---
-  
+  // --- Phase Auto-Trigger Logic (Host Only) ---
+  useEffect(() => {
+      if (role !== 'HOST' || !gameState) return;
+
+      // Check if both players are ready
+      const p1Ready = gameState.playerReadyState[1];
+      const p2Ready = gameState.playerReadyState[2];
+
+      if (p1Ready && p2Ready && !gameState.isResolving) {
+          // Reset readiness automatically when triggering phase
+          // Note: We wrap the setGameState inside the phase handlers to reset ready state atomically
+          // OR we can trigger logic that includes resetting it.
+          
+          // Helper to inject reset into state updates
+          const withReset = (prev: GameState) => ({
+              ...prev,
+              playerReadyState: { 1: false, 2: false }
+          });
+
+          // Phase Dispatcher
+          if (gameState.phase === GamePhase.DRAW) {
+              setGameState(prev => prev ? withReset(prev) : null);
+              executeDrawPhase({ gameState, setGameState, createEffectContext });
+          } else if (gameState.phase === GamePhase.SET) {
+              setGameState(prev => prev ? withReset(prev) : null);
+              executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId, setP1SelectedCardId, setP2SelectedCardId });
+          } else if (gameState.phase === GamePhase.REVEAL) {
+              if (gameState.instantWindow === InstantWindow.BEFORE_REVEAL) {
+                  setGameState(prev => prev ? withReset(prev) : null);
+                  executeFlipCards({ gameState, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId });
+              } else if (gameState.instantWindow === InstantWindow.AFTER_REVEAL) {
+                  setGameState(prev => prev ? withReset(prev) : null);
+                  executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
+              }
+          } else if (gameState.phase === GamePhase.DISCARD) {
+              setGameState(prev => prev ? withReset(prev) : null);
+              executeDiscardPhase({ gameState, setGameState, createEffectContext });
+          }
+      }
+  }, [gameState?.playerReadyState, role]);
+
+  const handleToggleReady = (playerId: number) => {
+      setGameState(prev => {
+          if (!prev) return null;
+          const current = prev.playerReadyState[playerId];
+          // Toggle
+          return {
+              ...prev,
+              playerReadyState: {
+                  ...prev.playerReadyState,
+                  [playerId]: !current
+              }
+          };
+      });
+  };
+
+  const onToggleReadyWrapper = () => {
+      const myId = role === 'HOST' ? 1 : 2;
+      if (role === 'HOST') {
+          handleToggleReady(1);
+      } else {
+          sendNetworkMessage('PLAYER_ACTION', { actionType: 'TOGGLE_READY' });
+      }
+  };
+
   // --- Visual Events Cleanup ---
   const handleVisualEventComplete = (id: string) => {
-      // Host handles cleanup, which syncs to client. Client just plays animation locally.
-      // But client needs to know when to clear local visual events queue? 
-      // Actually client receives FULL STATE sync. So if Host clears it, Client clears it.
       if (role === 'HOST') {
           setGameState(prev => prev ? ({ ...prev, visualEvents: prev.visualEvents.filter(e => e.id !== id) }) : null);
       }
   };
-
-  // --- Phase Handlers (Host Only) ---
-  const onDrawPhase = () => role === 'HOST' && executeDrawPhase({ gameState, setGameState, createEffectContext });
-  const onSetPhase = () => role === 'HOST' && executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId, setP1SelectedCardId, setP2SelectedCardId });
-  const onFlip = () => role === 'HOST' && executeFlipCards({ gameState, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId });
-  const onResolve = () => role === 'HOST' && executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
-  const onDiscard = () => role === 'HOST' && executeDiscardPhase({ gameState, setGameState, createEffectContext });
 
   const handleCardClickLogic = (player: PlayerState, card: Card) => {
     if (!gameState) return;
@@ -461,7 +518,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       );
   }
 
-  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState;
+  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field, playerReadyState } = gameState;
   const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
 
   // Conditional Lock Logic Helper (Copied from LocalGame, needed for Client UI state)
@@ -499,57 +556,82 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const p2MustDiscard = p2HandCount > player2.maxHandSize && !player2.skipDiscardThisTurn;
 
   const getActionButton = () => {
-    if (role !== 'HOST') return <div className="text-sm text-stone-500 font-mono text-center w-full animate-pulse">等待主机操作...</div>;
-
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
-    const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
     
-    if (phase === GamePhase.DRAW) return <button onClick={onDrawPhase} className={`${commonClasses} bg-stone-700 hover:bg-stone-600 hover:shadow-stone-500/20 text-stone-200 border-stone-900`}>抽牌阶段</button>;
+    // Determine my ID and readiness
+    const myId = role === 'HOST' ? 1 : 2;
+    const isReady = playerReadyState[myId];
+    const opponentId = myId === 1 ? 2 : 1;
+    const opponentReady = playerReadyState[opponentId];
+
+    // Button Style
+    const readyClass = "bg-emerald-700 hover:bg-emerald-600 text-white shadow-emerald-900/30";
+    const cancelClass = "bg-stone-700 hover:bg-stone-600 text-stone-300 border-stone-500";
+    const disabledClass = "bg-stone-800 text-stone-600 border-stone-900 cursor-not-allowed";
+    const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1 border-stone-900";
+
+    // Text & Logic per Phase
+    let label = isReady ? "取消准备 (Cancel)" : "准备 (Ready)";
+    let disabled = false;
+
     if (phase === GamePhase.SET) {
-       const disabled = !canSetP1 || !canSetP2;
-       return <button onClick={onSetPhase} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed' : 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-950 shadow-emerald-900/30'}`}>确认盖牌</button>;
+        // Special constraint for SET phase: Must select a card to be valid ready
+        const mySel = myId === 1 ? p1Sel : p2Sel;
+        const myHand = myId === 1 ? player1.hand : player2.hand;
+        const canSet = myId === 1 ? canSetP1 : canSetP2;
+        
+        if (myHand.length > 0 && !mySel) {
+            label = "请先选择要盖置的卡牌";
+            disabled = true;
+        } else if (myHand.length > 0 && !canSet) {
+            label = "无法盖置此牌";
+            disabled = true;
+        } else {
+            label = isReady ? "已确认盖牌 (取消)" : "确认盖牌";
+        }
+    } else if (phase === GamePhase.DISCARD) {
+        // Constraint: Must discard down to limit
+        const myMustDiscard = myId === 1 ? p1MustDiscard : p2MustDiscard;
+        if (myMustDiscard) {
+            label = "请先弃置手牌";
+            disabled = true;
+        } else {
+            label = isReady ? "等待回合结束 (取消)" : "结束回合";
+        }
+    } else if (phase === GamePhase.DRAW) {
+        label = isReady ? "等待抽牌 (取消)" : "进入抽牌阶段";
+    } else if (phase === GamePhase.REVEAL) {
+        if (instantWindow === InstantWindow.BEFORE_REVEAL) label = isReady ? "等待揭示 (取消)" : "揭示卡牌";
+        else if (instantWindow === InstantWindow.AFTER_REVEAL) label = isReady ? "等待结算 (取消)" : "结算效果";
     }
-    if (phase === GamePhase.REVEAL) {
-       if (instantWindow === InstantWindow.BEFORE_REVEAL) return <button onClick={onFlip} className={`${commonClasses} bg-amber-800 hover:bg-amber-700 text-amber-100 border-amber-950 shadow-amber-900/30`}>揭示卡牌</button>;
-       if (instantWindow === InstantWindow.AFTER_REVEAL) return <button onClick={onResolve} className={`${commonClasses} bg-indigo-900 hover:bg-indigo-800 text-indigo-100 border-black shadow-indigo-900/30`}>结算效果</button>;
-       return <button className={`${commonClasses} bg-stone-800 text-stone-500 border-stone-950`} disabled>结算中...</button>;
+
+    if (disabled) {
+        return <button className={`${commonClasses} ${disabledClass}`} disabled>{label}</button>;
     }
-    if (phase === GamePhase.DISCARD) {
-       const disabled = p1MustDiscard || p2MustDiscard;
-       return <button onClick={onDiscard} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800 text-red-400 border-stone-950' : 'bg-stone-700 hover:bg-stone-600 text-stone-200 border-stone-900'}`}>{disabled ? "请先弃牌" : "结束回合"}</button>;
-    }
-    return null;
+
+    return (
+        <div className="flex flex-col w-full gap-1">
+            <button 
+                onClick={onToggleReadyWrapper} 
+                className={`${commonClasses} ${isReady ? cancelClass : readyClass}`}
+            >
+                {label}
+            </button>
+            <div className="flex justify-between px-1">
+                <span className={`text-[10px] font-bold ${isReady ? 'text-emerald-500' : 'text-stone-600'}`}>
+                    我方: {isReady ? '已准备' : '未准备'}
+                </span>
+                <span className={`text-[10px] font-bold ${opponentReady ? 'text-emerald-500' : 'text-stone-600'}`}>
+                    对方: {opponentReady ? '已准备' : '未准备'}
+                </span>
+            </div>
+        </div>
+    );
   };
 
   const myId = role === 'HOST' ? 1 : 2;
 
-  // Masking Opponent Hand Logic
-  // We create a "masked" version of the opponent's hand to pass to PlayerArea.
-  // Note: We don't change the actual 'player' object in state, just what we render.
-  const maskHand = (p: PlayerState) => ({
-      ...p,
-      hand: p.hand.map(c => ({ ...c, isFaceUp: false })) // We'll handle this visually in CardComponent? No, CardComponent takes `isFaceUp` prop.
-      // Wait, PlayerArea maps through hand and sets `isFaceUp={true}` hardcoded.
-      // We can't easily override it without changing PlayerArea.
-      // BUT `PlayerArea` takes `player` object. 
-      // If we want to hide cards, we can pass a player object where cards are "hidden" (e.g. dummy cards) 
-      // OR we rely on `isOpponent` inside PlayerArea?
-      // PlayerArea `isOpponent` just flips layout.
-      // Let's modify PlayerArea logic? No, let's keep it simple.
-      // We will render the masked player area by creating a new component or modifying CardComponent logic?
-      // Actually, CardComponent respects `card` data. But `Card` model doesn't have `isFaceUp` property usually (it's a prop).
-      // Solution: Pass a modified `PlayerArea` usage in OnlineGame? 
-      // No, let's just accept that for now we render them face up but if we want them hidden, we should modify `PlayerArea` to accept `hideHand` prop.
-      // But I cannot modify PlayerArea in this turn (per strict instructions usually, though I can if needed).
-      // Let's modify `PlayerArea.tsx` slightly? No, I only updated OnlineGame and gameUtils.
-      // I will leave it as "Face Up" for now to debug connection first, or...
-      // Actually, standard `PlayerArea` implementation in `components/PlayerArea.tsx` sets `isFaceUp={true}`.
-      // To fix visibility without changing PlayerArea, I can replace the cards in opponent's hand with "Back of Card" dummy cards in the render prop!
-  });
-
   // Prepare players for render
-  // If I am Host (P1), P2 is opponent. I should not see P2 cards.
-  // If I am Client (P2), P1 is opponent. I should not see P1 cards.
   const player1ForRender = role === 'HOST' ? player1 : {
       ...player1,
       hand: player1.hand.map(c => ({...c, name: '???', description: '', keywords: [], suit: 'EMPTY' as any, rank: 0, isLocked: false})) // Masked P1 for Client
@@ -559,13 +641,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       ...player2,
       hand: player2.hand.map(c => ({...c, name: '???', description: '', keywords: [], suit: 'EMPTY' as any, rank: 0, isLocked: false})) // Masked P2 for Host
   };
-  
-  // Wait, if I mask them completely, `CardComponent` renders "Card Back"?
-  // CardComponent renders Back if `!isFaceUp`. PlayerArea forces `isFaceUp={true}`.
-  // So it will render a card with "???" name. That's acceptable for now to indicate "Hidden".
-  // Better: If I want to show Card Back, I need to control `isFaceUp`.
-  // Since I can't change PlayerArea in this step easily without touching more files... 
-  // Let's stick to the "???" card for opponent to verify "Data Hiding".
   
   return (
     <div className="min-h-screen bg-stone-900 flex flex-col font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
@@ -628,7 +703,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
          <div className="flex items-center gap-4">
              {gameState.field && <span className="text-emerald-500 font-serif font-bold">🏟️ {gameState.field.card.name} (P{gameState.field.ownerId})</span>}
              <div className="flex items-center gap-1.5">
-                 <span className={`w-2 h-2 rounded-full bg-green-500 animate-pulse`}></span>
+                 <span className={`w-2 h-2 rounded-full ${connState==='CONNECTED'?'bg-green-500':'bg-red-500'} animate-pulse`}></span>
                  <span className="text-xs font-bold text-stone-400 uppercase">{role} ID: {myPeerId?.slice(0,6)}...</span>
              </div>
          </div>
