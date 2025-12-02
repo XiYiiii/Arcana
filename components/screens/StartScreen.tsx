@@ -1,12 +1,12 @@
-
 import React from 'react';
 
 interface StartScreenProps {
   onStartGame: () => void;
+  onStartOnlineGame: () => void;
   onOpenDeckBuilder: () => void;
 }
 
-export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onOpenDeckBuilder }) => {
+export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onStartOnlineGame, onOpenDeckBuilder }) => {
   return (
     <div className="fixed inset-0 bg-stone-950 flex flex-col items-center justify-center z-50 overflow-hidden">
       {/* Background Effects */}
@@ -54,15 +54,15 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onOpenDec
              </div>
           </button>
 
-          {/* Online Multiplayer (Disabled) */}
+          {/* Online Multiplayer (Enabled) */}
           <button 
-            disabled
-            className="relative px-8 py-3 bg-stone-900/50 border border-stone-800 rounded-lg flex flex-col items-center overflow-hidden cursor-not-allowed opacity-70 group"
+            onClick={onStartOnlineGame}
+            className="group relative px-8 py-3 bg-stone-900/80 border border-stone-700 rounded-lg flex flex-col items-center overflow-hidden transition-all hover:border-indigo-500 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]"
           >
-             <span className="font-serif font-bold text-lg text-stone-600 tracking-widest group-hover:text-stone-500 transition-colors">联机模式</span>
-             <span className="text-[9px] text-stone-700 uppercase tracking-widest">Online PvP</span>
-             <div className="absolute inset-0 bg-stone-950/60 flex items-center justify-center backdrop-blur-[1px]">
-                 <span className="text-[10px] bg-stone-800 text-stone-500 px-2 py-0.5 rounded border border-stone-700 font-mono">开发中</span>
+             <div className="absolute inset-0 bg-gradient-to-r from-indigo-900/0 via-indigo-900/20 to-indigo-900/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+             <div className="relative flex flex-col items-center z-10">
+                <span className="font-serif font-bold text-lg text-stone-300 tracking-widest group-hover:text-indigo-200 transition-colors">联机模式</span>
+                <span className="text-[9px] text-stone-600 uppercase tracking-widest mt-0.5 group-hover:text-indigo-400">Online PvP</span>
              </div>
           </button>
 
@@ -78,7 +78,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onOpenDec
       </div>
 
       <div className="absolute bottom-8 text-stone-600 text-xs font-mono">
-        PROJECT BLANK v0.3.1
+        PROJECT BLANK v0.3.2
       </div>
     </div>
   );
