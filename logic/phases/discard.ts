@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import { GamePhase, InstantWindow, PlayerState } from '../../types';
 
 export const executeDiscardPhase = (
@@ -16,9 +11,6 @@ export const executeDiscardPhase = (
   const { gameState, setGameState, createEffectContext } = ctx;
   if (!gameState) return;
   const { player1, player2 } = gameState;
-
-  // --- Pentacles Lovers Check (End of End Phase Trigger) ---
-  // ... (Logic remains similar conceptually, skipped for brevity in this cleanup)
 
   const p1MustDiscard = player1.hand.length > player1.maxHandSize && !player1.skipDiscardThisTurn;
   const p2MustDiscard = player2.hand.length > player2.maxHandSize && !player2.skipDiscardThisTurn;
@@ -189,7 +181,9 @@ export const executeDiscardPhase = (
       turnCount: prev.turnCount + 1,
       player1: p1FinalState,
       player2: p2FinalState,
-      logs: [`--- 第 ${prev.turnCount + 1} 回合开始 ---`, ...extraLogs, ...prev.logs]
+      logs: [`--- 第 ${prev.turnCount + 1} 回合开始 ---`, ...extraLogs, ...prev.logs],
+      // IMPORTANT: Reset ready state for next turn
+      playerReadyState: { 1: false, 2: false }
     };
   });
 };

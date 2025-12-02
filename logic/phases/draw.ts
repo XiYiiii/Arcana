@@ -37,6 +37,7 @@ export const executeDrawPhase = async (
     phase: GamePhase.SET,
     instantWindow: InstantWindow.BEFORE_SET,
     logs: ["抽牌结束，进入盖牌阶段。", "现在可以使用【置牌前】插入。", ...prev.logs],
-    isResolving: false
+    isResolving: false,
+    playerReadyState: { 1: false, 2: false } // Ensure ready state is clear for next phase
   }) : null);
 };

@@ -1,3 +1,4 @@
+
 import { GamePhase, InstantWindow, EffectContext, Card, PendingEffect, Keyword } from '../../types';
 import { damagePlayer, modifyPlayer, getOpponentId, drawCards, destroyCard, updateQuestProgress, discardCards } from '../../services/actions';
 import { compareCards, shuffleDeck } from '../../services/gameUtils';
@@ -10,11 +11,9 @@ export const executeFlipCards = async (
     gameState: any, 
     setGameState: any, 
     addLog: (msg: string) => void,
-    setP1SelectedCardId: any,
-    setP2SelectedCardId: any
   }
 ) => {
-  const { gameState, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId } = ctx;
+  const { gameState, setGameState, addLog } = ctx;
   
   if (!gameState || gameState.isResolving) return;
   setGameState(prev => prev ? ({ ...prev, isResolving: true }) : null);
@@ -30,15 +29,13 @@ export const executeFlipCards = async (
 
   await delay(DELAY_MS);
 
-  // Reset selections
-  setP1SelectedCardId(null);
-  setP2SelectedCardId(null);
-
   setGameState(prev => prev ? ({
     ...prev,
     isResolving: false,
     instantWindow: InstantWindow.AFTER_REVEAL, 
-    logs: ["卡牌已揭示。进入【亮牌后】时机。", ...prev.logs]
+    logs: ["卡牌已揭示。进入【亮牌后】时机。", ...prev.logs],
+    // IMPORTANT: Reset ready state so players must click "Resolve"
+    playerReadyState: { 1: false, 2: false }
   }) : null);
 };
 
@@ -318,6 +315,7 @@ export const executeResolveEffects = async (
     ...prev, 
     phase: GamePhase.DISCARD, 
     instantWindow: InstantWindow.NONE,
-    isResolving: false 
+    isResolving: false,
+    playerReadyState: { 1: false, 2: false } // Safety reset
   }) : null);
 };

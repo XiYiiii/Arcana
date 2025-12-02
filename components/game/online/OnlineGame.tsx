@@ -327,19 +327,19 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               setGameState, 
               p1SelectedCardId, 
               p2SelectedCardId: p2SelectedCardIdRef.current,
-              setP1SelectedCardId, 
-              setP2SelectedCardId: (val: string | null) => {
-                  p2SelectedCardIdRef.current = val;
-                  setP2SelectedCardId(val);
-              }
           });
+          // CLEANUP: Reset selections explicitly after consuming them
+          setP1SelectedCardId(null);
+          p2SelectedCardIdRef.current = null;
+          setP2SelectedCardId(null);
       }
       else if (gs.phase === GamePhase.REVEAL) {
           if (gs.instantWindow === InstantWindow.BEFORE_REVEAL) {
-              executeFlipCards({ gameState: gs, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId: (val: string | null) => {
-                  p2SelectedCardIdRef.current = val;
-                  setP2SelectedCardId(val);
-              }});
+              executeFlipCards({ gameState: gs, setGameState, addLog });
+              // CLEANUP
+              setP1SelectedCardId(null);
+              p2SelectedCardIdRef.current = null;
+              setP2SelectedCardId(null);
           } else if (gs.instantWindow === InstantWindow.AFTER_REVEAL) {
               executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
           }

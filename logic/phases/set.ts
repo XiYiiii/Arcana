@@ -6,11 +6,9 @@ export const executeSetPhase = (
     setGameState: any, 
     p1SelectedCardId: string | null, 
     p2SelectedCardId: string | null,
-    setP1SelectedCardId: any,
-    setP2SelectedCardId: any
   }
 ) => {
-  const { setGameState, p1SelectedCardId, p2SelectedCardId, setP1SelectedCardId, setP2SelectedCardId } = ctx;
+  const { setGameState, p1SelectedCardId, p2SelectedCardId } = ctx;
 
   setGameState(prev => {
     if (!prev) return null;
@@ -29,10 +27,9 @@ export const executeSetPhase = (
       instantWindow: InstantWindow.BEFORE_REVEAL, // Next window
       player1: setCard(prev.player1, p1SelectedCardId),
       player2: setCard(prev.player2, p2SelectedCardId),
-      logs: ["双方已盖牌。进入【亮牌前】时机。若无操作请点击【揭示卡牌】。", ...prev.logs]
+      logs: ["双方已盖牌。进入【亮牌前】时机。若无操作请点击【揭示卡牌】。", ...prev.logs],
+      // IMPORTANT: Reset ready state so players must click "Reveal"
+      playerReadyState: { 1: false, 2: false }
     };
   });
-  
-  setP1SelectedCardId(null);
-  setP2SelectedCardId(null);
 };

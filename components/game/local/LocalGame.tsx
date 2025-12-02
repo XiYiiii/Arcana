@@ -221,8 +221,22 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
 
   // --- Phase Handlers ---
   const onDrawPhase = () => executeDrawPhase({ gameState, setGameState, createEffectContext });
-  const onSetPhase = () => executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId, setP1SelectedCardId, setP2SelectedCardId });
-  const onFlip = () => executeFlipCards({ gameState, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId });
+  
+  const onSetPhase = () => {
+      // Execute logic
+      executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId });
+      // Clear selections manually (Decoupled from logic)
+      setP1SelectedCardId(null);
+      setP2SelectedCardId(null);
+  };
+  
+  const onFlip = () => {
+      executeFlipCards({ gameState, setGameState, addLog });
+      // Clear selections if any were stuck
+      setP1SelectedCardId(null);
+      setP2SelectedCardId(null);
+  };
+  
   const onResolve = () => executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
   const onDiscard = () => executeDiscardPhase({ gameState, setGameState, createEffectContext });
 
