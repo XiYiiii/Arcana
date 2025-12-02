@@ -16,12 +16,12 @@ export const executeFlipCards = async (
   const { gameState, setGameState, addLog } = ctx;
   
   if (!gameState || gameState.isResolving) return;
-  setGameState(prev => prev ? ({ ...prev, isResolving: true }) : null);
+  setGameState((prev: any) => prev ? ({ ...prev, isResolving: true }) : null);
   
   addLog("揭示卡牌！");
   await delay(DELAY_MS/2);
 
-  setGameState(prev => prev ? ({
+  setGameState((prev: any) => prev ? ({
     ...prev,
     player1: { ...prev.player1, isFieldCardRevealed: true },
     player2: { ...prev.player2, isFieldCardRevealed: true }
@@ -29,7 +29,7 @@ export const executeFlipCards = async (
 
   await delay(DELAY_MS);
 
-  setGameState(prev => prev ? ({
+  setGameState((prev: any) => prev ? ({
     ...prev,
     isResolving: false,
     instantWindow: InstantWindow.AFTER_REVEAL, 
@@ -51,7 +51,7 @@ export const executeResolveEffects = async (
   const { gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect } = ctx;
   
   if (!gameStateRef.current || gameStateRef.current.isResolving) return;
-  setGameState(prev => prev ? ({ ...prev, isResolving: true, instantWindow: InstantWindow.NONE }) : null);
+  setGameState((prev: any) => prev ? ({ ...prev, isResolving: true, instantWindow: InstantWindow.NONE }) : null);
 
   // 1. Rule Damage
   addLog("结算规则伤害...");
@@ -123,14 +123,14 @@ export const executeResolveEffects = async (
               deck: shuffleDeck([...pl.deck, ...pl.discardPile]),
               discardPile: []
           });
-          setGameState(prev => prev ? ({
+          setGameState((prev: any) => prev ? ({
               ...prev,
               player1: recycle(prev.player1),
               player2: recycle(prev.player2),
               field: nextField 
           }) : null);
       } else {
-          setGameState(prev => prev ? ({ ...prev, field: nextField }) : null);
+          setGameState((prev: any) => prev ? ({ ...prev, field: nextField }) : null);
       }
   }
 
@@ -173,7 +173,7 @@ export const executeResolveEffects = async (
             // Pentacles Moon Mark: Discard 1 or Draw 1
             if (card.marks.includes('mark-pentacles-moon')) {
                 addLog(`[星币·月亮] 标记触发！选择：弃置或抽牌。`);
-                setGameState(prev => ({
+                setGameState((prev: any) => ({
                     ...prev!,
                     interaction: {
                         id: `pentacles-moon-choice-${Date.now()}`,
@@ -185,13 +185,13 @@ export const executeResolveEffects = async (
                                 label: "抽一张牌", 
                                 action: () => {
                                     drawCards(effCtx, pid, 1);
-                                    setGameState(s => s ? ({...s, interaction: null}) : null);
+                                    setGameState((s: any) => s ? ({...s, interaction: null}) : null);
                                 }
                             },
                             { 
                                 label: "弃置一张牌", 
                                 action: () => {
-                                    setGameState(s => {
+                                    setGameState((s: any) => {
                                         if(!s) return null;
                                         const pp = s[pid===1?'player1':'player2'];
                                         if(pp.hand.length === 0) {
@@ -207,10 +207,10 @@ export const executeResolveEffects = async (
                                                 description: "选择一张牌弃置:",
                                                 inputType: 'CARD_SELECT',
                                                 cardsToSelect: pp.hand,
-                                                onCardSelect: (c) => {
+                                                onCardSelect: (c: Card) => {
                                                     const discardCtx = createEffectContext(pid, c);
                                                     discardCards(discardCtx, pid, [c.instanceId]);
-                                                    setGameState(curr => curr ? ({...curr, interaction: null}) : null);
+                                                    setGameState((curr: any) => curr ? ({...curr, interaction: null}) : null);
                                                 }
                                             }
                                         }
@@ -290,9 +290,9 @@ export const executeResolveEffects = async (
             }
 
             // --- AFTER EFFECT WINDOW ---
-            setGameState(prev => prev ? ({ ...prev, instantWindow: InstantWindow.AFTER_EFFECT }) : null);
+            setGameState((prev: any) => prev ? ({ ...prev, instantWindow: InstantWindow.AFTER_EFFECT }) : null);
             await delay(600); 
-            setGameState(prev => prev ? ({ ...prev, instantWindow: InstantWindow.NONE }) : null);
+            setGameState((prev: any) => prev ? ({ ...prev, instantWindow: InstantWindow.NONE }) : null);
        }
      }
   }
@@ -311,7 +311,7 @@ export const executeResolveEffects = async (
   handleDiscardField(1);
   handleDiscardField(2);
 
-  setGameState(prev => prev ? ({ 
+  setGameState((prev: any) => prev ? ({ 
     ...prev, 
     phase: GamePhase.DISCARD, 
     instantWindow: InstantWindow.NONE,

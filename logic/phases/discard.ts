@@ -17,7 +17,7 @@ export const executeDiscardPhase = (
 
   if (p1MustDiscard || p2MustDiscard) return;
 
-  setGameState(prev => {
+  setGameState((prev: any) => {
     if (!prev) return null;
     
     // Function to apply "End Phase" Logic
@@ -182,6 +182,8 @@ export const executeDiscardPhase = (
       player1: p1FinalState,
       player2: p2FinalState,
       logs: [`--- 第 ${prev.turnCount + 1} 回合开始 ---`, ...extraLogs, ...prev.logs],
+      // CRITICAL: Reset isResolving for the next turn loop
+      isResolving: false,
       // IMPORTANT: Reset ready state for next turn
       playerReadyState: { 1: false, 2: false }
     };

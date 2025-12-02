@@ -223,16 +223,17 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
   const onDrawPhase = () => executeDrawPhase({ gameState, setGameState, createEffectContext });
   
   const onSetPhase = () => {
-      // Execute logic
+      // Execute logic (updates GameState)
       executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId });
-      // Clear selections manually (Decoupled from logic)
+      // CRITICAL: Manually clear UI state.
+      // Logic function no longer takes setter args to avoid coupling issues.
       setP1SelectedCardId(null);
       setP2SelectedCardId(null);
   };
   
   const onFlip = () => {
       executeFlipCards({ gameState, setGameState, addLog });
-      // Clear selections if any were stuck
+      // Cleanup for safety
       setP1SelectedCardId(null);
       setP2SelectedCardId(null);
   };
