@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Peer, { DataConnection } from 'peerjs';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
 import { NetworkMessage, NetworkRole, GameActionPayload } from '../../../types/network'; 
@@ -46,6 +46,14 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const peerRef = useRef<Peer | null>(null);
   const connRef = useRef<DataConnection | null>(null);
 
+  // --- Refs for Stale Closure Prevention ---
+  const gameStateRef = useRef<GameState | null>(null);
+  const roleRef = useRef<NetworkRole>('HOST');
+  
+  // Sync Refs
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+  useEffect(() => { roleRef.current = role; }, [role]);
+
   // --- Local Selection State ---
   // Host needs Refs to access latest values inside async/event closures without stale state
   const p2SelectedCardIdRef = useRef<string | null>(null);
@@ -58,8 +66,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   // Visual Effect Resolver
   const activeEffectResolverRef = useRef<(() => void) | null>(null);
-  const gameStateRef = useRef<GameState | null>(null);
-  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
   // --- Cleanup on Unmount ---
   useEffect(() => {
@@ -69,7 +75,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       };
   }, []);
 
-  // --- Initial Game Setup Logic (Reused) ---
+  // --- Initial Game Setup Logic ---
   const initializeGame = () => {
       const allowedDefs = CARD_DEFINITIONS.filter(c => enabledCardIds.includes(c.id) || c.isTreasure);
       const finalDefs = allowedDefs.length < 10 ? CARD_DEFINITIONS : allowedDefs;
@@ -126,12 +132,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           return;
       }
 
-      // IMPORTANT: Sanitize payload if it's a game state
       const safePayload = type === 'GAME_STATE_SYNC' ? sanitizeGameState(payload) : payload;
 
       const msg: NetworkMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-          sender: role,
+          sender: roleRef.current,
           type,
           payload: safePayload,
           timestamp: Date.now()
@@ -145,25 +150,26 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       }
   };
 
-  const handleDataReceive = (data: any) => {
-      const msg = data as NetworkMessage;
-      addNetworkLog({ ...msg, id: `recv-${msg.id}` }); // Log incoming
+  // IMPORTANT: This ref holds the LATEST processing function to avoid closure staleness in event listeners
+  const processGameActionRef = useRef<(pid: number, action: GameActionPayload) => void>(() => {});
 
-      if (role === 'HOST') {
-          // HOST Logic
+  const handleDataReceive = useCallback((data: any) => {
+      const msg = data as NetworkMessage;
+      addNetworkLog({ ...msg, id: `recv-${msg.id}` });
+
+      if (roleRef.current === 'HOST') {
           if (msg.type === 'PLAYER_ACTION') {
               const action = msg.payload as GameActionPayload;
-              processGameAction(2, action);
+              // Always call the ref to get the latest closure
+              processGameActionRef.current(2, action); 
           }
       } else {
-          // CLIENT Logic
           if (msg.type === 'GAME_STATE_SYNC') {
-              // IMPORTANT: Hydrate the state to re-attach functions
               const syncedState = hydrateGameState(msg.payload);
               setGameState(syncedState);
           }
       }
-  };
+  }, []);
 
   // --- Peer Setup Handlers ---
 
@@ -218,8 +224,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           setConnState('CONNECTED');
           setNetworkError(null);
           
-          if (role === 'HOST') {
-              // Host initializes game and sends initial state
+          if (roleRef.current === 'HOST') {
               const newState = initializeGame();
               setGameState(newState);
           }
@@ -243,12 +248,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   // --- Logic Helpers ---
 
-  // Host executes logic, then syncs state to client
+  // Host Sync Loop
   useEffect(() => {
       if (role === 'HOST' && connState === 'CONNECTED' && gameState) {
-          // Construct message
           const safePayload = sanitizeGameState(gameState);
-          
           const msg: NetworkMessage = {
               id: `sync-${Date.now()}`,
               sender: 'HOST',
@@ -256,7 +259,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               payload: safePayload,
               timestamp: Date.now()
           };
-          
           if (connRef.current?.open) {
               try {
                   connRef.current.send(msg);
@@ -267,44 +269,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       }
   }, [gameState, role, connState]);
 
+  // --- Core Game Logic (Host) ---
 
-  // The Core Logic Processor (Runs on HOST)
-  const processGameAction = (playerId: number, action: GameActionPayload) => {
-      if (!gameStateRef.current) return;
-      const gs = gameStateRef.current;
-      const player = playerId === 1 ? gs.player1 : gs.player2;
-
-      // console.log(`[HOST] Processing Action from P${playerId}:`, action);
-
-      if (action.actionType === 'UPDATE_SELECTION') {
-          // Host records P2 selection based on what client sent (Absolute Update)
-          // cardId can be null, which means deselect
-          if (playerId === 2) {
-              p2SelectedCardIdRef.current = action.cardId || null;
-              setP2SelectedCardId(action.cardId || null); // Update state for UI if needed (Host usually doesn't see P2 select)
-          }
-          
-          // Execute Discard Logic immediately if phase matches and cardId is present
-          if (gs.phase === GamePhase.DISCARD && action.cardId) {
-              const card = player.hand.find(c => c.instanceId === action.cardId);
-              if (card && !card.isTreasure) {
-                  const handCount = player.hand.filter(c => !c.isTreasure).length;
-                  if (handCount > player.maxHandSize && !player.skipDiscardThisTurn) {
-                      const ctx = createEffectContext(playerId, card);
-                      discardCards(ctx, playerId, [card.instanceId]);
-                  }
-              }
-          }
-      }
-      else if (action.actionType === 'USE_INSTANT' && action.cardId) {
-          handleInstantUseLogic(player, action.cardId);
-      }
-      else if (action.actionType === 'TOGGLE_READY') {
-          handleToggleReady(playerId);
-      }
-  };
-
-  // --- Standard Game Logic (Host Only) ---
   const addLog = (message: string) => {
     setGameState(prev => prev ? ({ ...prev, logs: [message, ...prev.logs] }) : null);
   };
@@ -321,24 +287,21 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
      };
   };
 
-  // --- Phase Auto-Trigger Logic (Host Only) ---
   const handleToggleReady = (pid: number) => {
       setGameState(prev => {
           if (!prev) return null;
-          const nextReadyState = { ...prev.playerReadyState, [pid]: !prev.playerReadyState[pid] };
+          
+          // Toggle Ready State
+          const currentReady = prev.playerReadyState[pid];
+          const nextReadyState = { ...prev.playerReadyState, [pid]: !currentReady };
           
           // CHECK FOR PHASE ADVANCEMENT
           const p1Ready = nextReadyState[1];
           const p2Ready = nextReadyState[2];
 
+          // If both ready, trigger advance immediately (in next tick to allow sync of ready state)
           if (p1Ready && p2Ready && !prev.isResolving) {
-              // Trigger next phase immediately
-              setTimeout(() => advancePhase(prev), 50); // Small timeout to allow state sync of "Both Ready" first
-              
-              // Reset ready states in the next tick via advancePhase logic or here?
-              // Better to do it here to prevent double trigger? 
-              // Actually, advancePhase will update state, which overrides this.
-              // But we should return the "Both Ready" state first so the Client sees it briefly.
+              setTimeout(() => advancePhase(prev), 100);
           }
 
           return { ...prev, playerReadyState: nextReadyState };
@@ -346,20 +309,24 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   const advancePhase = (currentState: GameState) => {
-      console.log("[HOST] Executing phase advancement...");
-      
-      // 1. Reset Ready State immediately
-      setGameState(prev => prev ? ({ ...prev, playerReadyState: { 1: false, 2: false } }) : null);
+      // ATOMIC UPDATE: Reset Ready AND Set resolving to avoid UI flickering for client
+      setGameState(prev => prev ? ({ 
+          ...prev, 
+          isResolving: true, // Lock client UI
+          playerReadyState: { 1: false, 2: false } 
+      }) : null);
 
-      // 2. Execute Phase Logic
-      if (currentState.phase === GamePhase.DRAW) {
-          executeDrawPhase({ gameState: gameStateRef.current, setGameState, createEffectContext });
+      const gs = gameStateRef.current || currentState;
+
+      // Execute Phase Logic
+      if (gs.phase === GamePhase.DRAW) {
+          executeDrawPhase({ gameState: gs, setGameState, createEffectContext });
       } 
-      else if (currentState.phase === GamePhase.SET) {
+      else if (gs.phase === GamePhase.SET) {
           executeSetPhase({ 
               setGameState, 
               p1SelectedCardId, 
-              p2SelectedCardId: p2SelectedCardIdRef.current, // Use REF for fresh value
+              p2SelectedCardId: p2SelectedCardIdRef.current,
               setP1SelectedCardId, 
               setP2SelectedCardId: (val: string | null) => {
                   p2SelectedCardIdRef.current = val;
@@ -367,18 +334,18 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               }
           });
       }
-      else if (currentState.phase === GamePhase.REVEAL) {
-          if (currentState.instantWindow === InstantWindow.BEFORE_REVEAL) {
-              executeFlipCards({ gameState: gameStateRef.current, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId: (val: string | null) => {
+      else if (gs.phase === GamePhase.REVEAL) {
+          if (gs.instantWindow === InstantWindow.BEFORE_REVEAL) {
+              executeFlipCards({ gameState: gs, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId: (val: string | null) => {
                   p2SelectedCardIdRef.current = val;
                   setP2SelectedCardId(val);
               }});
-          } else if (currentState.instantWindow === InstantWindow.AFTER_REVEAL) {
+          } else if (gs.instantWindow === InstantWindow.AFTER_REVEAL) {
               executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
           }
       }
-      else if (currentState.phase === GamePhase.DISCARD) {
-          executeDiscardPhase({ gameState: gameStateRef.current, setGameState, createEffectContext });
+      else if (gs.phase === GamePhase.DISCARD) {
+          executeDiscardPhase({ gameState: gs, setGameState, createEffectContext });
       }
   };
 
@@ -395,7 +362,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   // --- Active Effect Logic ---
   const dismissActiveEffect = () => {
-     // Host dismisses, which updates state, which syncs to client. Client UI closes.
      if (role === 'HOST' && gameState?.activeEffect) {
          setGameState(prev => prev ? ({ ...prev, activeEffect: null }) : null);
          if (activeEffectResolverRef.current) {
@@ -415,14 +381,48 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       });
   };
 
-  // --- Interactions (Both Sides) ---
+  // --- Host Processing Logic (Ref Updated) ---
+  const processGameAction = (playerId: number, action: GameActionPayload) => {
+      if (!gameStateRef.current) return;
+      const gs = gameStateRef.current;
+      const player = playerId === 1 ? gs.player1 : gs.player2;
+
+      if (action.actionType === 'UPDATE_SELECTION') {
+          if (playerId === 2) {
+              p2SelectedCardIdRef.current = action.cardId || null;
+              setP2SelectedCardId(action.cardId || null);
+          }
+          if (gs.phase === GamePhase.DISCARD && action.cardId) {
+              const card = player.hand.find(c => c.instanceId === action.cardId);
+              if (card && !card.isTreasure) {
+                  const handCount = player.hand.filter(c => !c.isTreasure).length;
+                  if (handCount > player.maxHandSize && !player.skipDiscardThisTurn) {
+                      const ctx = createEffectContext(playerId, card);
+                      discardCards(ctx, playerId, [card.instanceId]);
+                  }
+              }
+          }
+      }
+      else if (action.actionType === 'USE_INSTANT' && action.cardId) {
+          handleInstantUseLogic(player, action.cardId);
+      }
+      else if (action.actionType === 'TOGGLE_READY') {
+          handleToggleReady(playerId);
+      }
+  };
+
+  // Keep the ref updated with the latest function closure
+  useEffect(() => {
+      processGameActionRef.current = processGameAction;
+  }, [gameState, p1SelectedCardId, p2SelectedCardId]); // Deps needed to refresh closure
+
+  // --- Interactions ---
   const handleCardClick = (player: PlayerState, card: Card) => {
     const myId = role === 'HOST' ? 1 : 2;
     if (player.id !== myId) return;
     if (!gameState) return;
     if (gameState?.isResolving || gameState?.phase === GamePhase.GAME_OVER) return;
 
-    // 1. Update Local UI Selection
     let newSelectionId: string | null = null;
     if (myId === 1) {
         newSelectionId = card.instanceId === p1SelectedCardId ? null : card.instanceId;
@@ -432,11 +432,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         setP2SelectedCardId(newSelectionId);
     }
 
-    // 2. Send Action
     if (role === 'CLIENT') {
         sendNetworkMessage('PLAYER_ACTION', { actionType: 'UPDATE_SELECTION', cardId: newSelectionId });
     } else {
-        // Host logic for Discard Phase (Direct interaction)
+        // Host discard logic
         if (gameState.phase === GamePhase.DISCARD) {
              if (card.isTreasure) {
                  addLog(`[规则] 宝藏牌无法被弃置！`);
@@ -454,8 +453,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const handleInstantUse = (cardInstanceId: string) => {
       if (role === 'HOST') {
           if (!gameState) return;
-          const player = gameState.player1;
-          handleInstantUseLogic(player, cardInstanceId);
+          handleInstantUseLogic(gameState.player1, cardInstanceId);
       } else {
           sendNetworkMessage('PLAYER_ACTION', { actionType: 'USE_INSTANT', cardId: cardInstanceId });
       }
@@ -501,7 +499,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     }
   };
   
-  // --- Viewer Handlers ---
   const openPileView = (type: 'DISCARD' | 'DECK' | 'VAULT', pid: number) => {
       if (!gameState) return;
       const player = pid === 1 ? gameState.player1 : gameState.player2;
@@ -523,67 +520,44 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           cards = treasures;
           title = `${player.name} 的宝库`;
       }
-      
       setViewingPile({ type, pid, cards, title, sorted });
   };
 
-  // --- Ready Button Handler ---
   const handleReadyClick = () => {
       if (role === 'HOST') {
           handleToggleReady(1);
       } else {
-          // Optimistic update for UI responsiveness? No, wait for server sync to avoid desync.
-          // Just send message.
           sendNetworkMessage('PLAYER_ACTION', { actionType: 'TOGGLE_READY' });
       }
   };
 
-  // --- Main Render Logic ---
-
   if (connState !== 'CONNECTED' || !gameState) {
-      return (
-          <ConnectionScreen 
-              onCreateGame={startHosting}
-              onJoinGame={joinGame}
-              onBack={onExit}
-              isConnecting={connState === 'CONNECTING' || connState === 'HOSTING'}
-              hostId={myPeerId}
-              error={networkError}
-          />
-      );
+      return <ConnectionScreen onCreateGame={startHosting} onJoinGame={joinGame} onBack={onExit} isConnecting={connState === 'CONNECTING' || connState === 'HOSTING'} hostId={myPeerId} error={networkError} />;
   }
 
-  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field, playerReadyState } = gameState;
+  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, playerReadyState } = gameState;
   const myId = role === 'HOST' ? 1 : 2;
   const myPlayer = myId === 1 ? player1 : player2;
   const oppPlayer = myId === 1 ? player2 : player1;
-  
-  // Selection Logic for Ready Button enablement
   const mySelectionId = myId === 1 ? p1SelectedCardId : p2SelectedCardId;
-  const myHand = myPlayer.hand;
-  const myHandCount = myHand.filter(c => !c.isTreasure).length;
-  
-  let canReady = true;
-  if (phase === GamePhase.SET) {
-      if (myHand.length > 0 && !mySelectionId) canReady = false;
-  } else if (phase === GamePhase.DISCARD) {
-      const mustDiscard = myHandCount > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
-      if (mustDiscard) canReady = false; 
-  }
-
   const myReady = playerReadyState[myId];
   const oppReady = playerReadyState[myId === 1 ? 2 : 1];
+
+  // Helper to determine button state
+  const isActionDisabled = () => {
+      if (phase === GamePhase.SET) return myPlayer.hand.length > 0 && !mySelectionId;
+      if (phase === GamePhase.DISCARD) return myPlayer.hand.filter(c=>!c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
+      return false;
+  };
 
   const getActionButton = () => {
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     
+    // Waiting for opponent
     if (myReady && !oppReady) {
         return (
             <div className="flex flex-col items-center gap-2 w-full">
-                <button 
-                    onClick={handleReadyClick} 
-                    className="w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all border-b-4 bg-emerald-800 text-emerald-200 border-emerald-950 active:translate-y-1 active:border-b-0 hover:bg-emerald-700"
-                >
+                <button onClick={handleReadyClick} className="w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all border-b-4 bg-emerald-800 text-emerald-200 border-emerald-950 active:translate-y-1 active:border-b-0 hover:bg-emerald-700">
                     已准备 (取消)
                 </button>
                 <span className="text-[10px] text-stone-500 animate-pulse">等待对方...</span>
@@ -591,23 +565,15 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         );
     }
 
-    if (myReady && oppReady) {
+    // Both Ready / Processing
+    if (isResolving || (myReady && oppReady)) {
         return <div className="text-emerald-500 font-bold animate-pulse text-lg">处理中...</div>;
     }
 
-    const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
-    const disabledClasses = "bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed";
-    const readyClasses = "bg-stone-700 hover:bg-stone-600 hover:shadow-stone-500/20 text-stone-200 border-stone-900";
-
+    const disabled = isActionDisabled();
     return (
-        <button 
-            onClick={handleReadyClick} 
-            disabled={!canReady}
-            className={`${commonClasses} ${!canReady ? disabledClasses : readyClasses}`}
-        >
-            {phase === GamePhase.SET && !canReady ? "请先盖牌" : 
-             phase === GamePhase.DISCARD && !canReady ? "请先弃牌" : 
-             "准备 (Ready)"}
+        <button onClick={handleReadyClick} disabled={disabled} className={`w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${disabled ? "bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed" : "bg-stone-700 hover:bg-stone-600 hover:shadow-stone-500/20 text-stone-200 border-stone-900"}`}>
+            {phase === GamePhase.SET && disabled ? "请先盖牌" : phase === GamePhase.DISCARD && disabled ? "请先弃牌" : "准备 (Ready)"}
         </button>
     );
   };
@@ -620,7 +586,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       
       <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
 
-      {/* Top Bar */}
       <div className="absolute top-4 right-4 z-50 flex gap-3">
          <div className="flex items-center gap-2 px-3 py-2 bg-stone-900/60 rounded border border-stone-800 backdrop-blur text-[10px]">
              <span className={`w-2 h-2 rounded-full ${connState==='CONNECTED'?'bg-emerald-500':'bg-red-500'}`}></span>
@@ -640,7 +605,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
       <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
       
-      {/* Status Ticker */}
       <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
          <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
          <span className="text-stone-400 font-serif">
@@ -678,7 +642,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         <PlayerArea 
           player={myPlayer} phase={phase} 
           selectedCardId={mySelectionId} 
-          mustDiscard={myHandCount > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn}
+          mustDiscard={!isActionDisabled() && phase === GamePhase.DISCARD && myPlayer.hand.filter(c=>!c.isTreasure).length > myPlayer.maxHandSize}
           canSet={phase === GamePhase.SET} 
           canInstant={instantWindow !== InstantWindow.NONE} 
           isResolving={isResolving} instantWindow={instantWindow}
@@ -690,7 +654,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         />
       </div>
 
-      {/* Bottom Action Panel */}
       <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex gap-6 h-40 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative">
          <div className="w-1/3 max-w-xs flex flex-col items-center justify-center border-r border-stone-800/50 pr-4">
             {getActionButton()}
