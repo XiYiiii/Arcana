@@ -99,7 +99,6 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   // Parse and structure the description
   const renderDescription = (text: string) => {
      // Split by tags like 【打出】, 【标记】, etc.
-     // Adjusted regex to capture 【...】 blocks
      const blocks = text.split(/(?=【)/g);
 
      return blocks.map((block, i) => {
@@ -108,7 +107,7 @@ export const CardComponent: React.FC<CardComponentProps> = ({
         
         if (match) {
            const tagRaw = match[1];
-           const content = match[2].trim(); 
+           let content = match[2].trim(); 
            
            let tagNode: React.ReactNode;
 
@@ -127,22 +126,43 @@ export const CardComponent: React.FC<CardComponentProps> = ({
                // Standard tags
                const tagName = tagRaw.replace(/[【】]/g, '');
                
+               // Helper to extract quoted name from start of content e.g. “Name”: Description
+               const extractSubText = (c: string) => {
+                   const m = c.match(/^[“"「]([^”"」]+)[”"」][:：]?\s*(.*)/s);
+                   if (m) {
+                       return { subText: m[1], remainingContent: m[2] };
+                   }
+                   return { subText: null, remainingContent: c };
+               };
+
                if (tagName === '场地') {
+                    const { subText, remainingContent } = extractSubText(content);
+                    if (subText) content = remainingContent;
+                    
                     tagNode = (
                         <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-emerald-950 rounded-sm px-0.5 py-[1px] border border-emerald-800 shadow-sm min-w-[24px] mt-[1px]">
                             <span className="font-black text-emerald-200 text-[9px] leading-none">场地</span>
+                            {subText && <span className="text-[6px] font-bold text-emerald-300 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-90 max-w-[52px] truncate">{subText}</span>}
                         </div>
                     );
                } else if (tagName === '任务') {
+                    const { subText, remainingContent } = extractSubText(content);
+                    if (subText) content = remainingContent;
+
                     tagNode = (
                         <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-amber-950 rounded-sm px-0.5 py-[1px] border border-amber-800 shadow-sm min-w-[24px] mt-[1px]">
                             <span className="font-black text-amber-200 text-[9px] leading-none">任务</span>
+                            {subText && <span className="text-[6px] font-bold text-amber-300 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-90 max-w-[52px] truncate">{subText}</span>}
                         </div>
                     );
                } else if (tagName === '标记') {
+                    const { subText, remainingContent } = extractSubText(content);
+                    if (subText) content = remainingContent;
+
                     tagNode = (
                         <div className="flex flex-col items-center justify-center mr-1 shrink-0 select-none bg-slate-800 rounded-sm px-0.5 py-[1px] border border-slate-600 shadow-sm min-w-[24px] mt-[1px]">
                             <span className="font-black text-slate-200 text-[9px] leading-none">标记</span>
+                            {subText && <span className="text-[6px] font-bold text-slate-300 leading-none mt-[1px] tracking-tighter whitespace-nowrap scale-90 max-w-[52px] truncate">{subText}</span>}
                         </div>
                     );
                } else {
@@ -205,20 +225,6 @@ export const CardComponent: React.FC<CardComponentProps> = ({
      </div>
   ) : null;
 
-  // Left Side Tooltip (Marks)
-  // Float left if possible, or right if tooltipSide is 'left' (avoid conflict)?
-  // Actually, keyword tooltip respects `tooltipSide`. 
-  // Marks should appear on the OPPOSITE side if possible, or stacked?
-  // User requested: "float on left, distinct from keywords on right".
-  // Let's force it to left: right-[105%]
-  // If keyword tooltip is also on left (tooltipSide='left'), they might overlap. 
-  // But usually CardComponent usage defaults to 'right' except in hand fan.
-  // In hand fan, cards on right side have tooltipSide='left'. 
-  // In that case, keywords are on left. Marks should probably be on right then?
-  // Let's make Marks tooltip respect `tooltipSide === 'right' ? 'left-side' : 'right-side'`.
-  // Wait, user said "marks on left, keywords on right".
-  // Let's try to stick to that unless it flies off screen.
-  
   const marksTooltip = showTooltip && marksToShow.length > 0 ? (
      <div 
         className={`absolute top-0 z-[9999] pointer-events-none flex flex-col gap-2 w-48 bg-stone-950/95 text-stone-200 p-2 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.9)] border border-stone-500/50 backdrop-blur-xl
