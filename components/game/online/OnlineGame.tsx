@@ -47,9 +47,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const connRef = useRef<DataConnection | null>(null);
 
   // --- Local Selection State ---
-  // IMPORTANT: Host tracks both selections for logic. Client tracks local P2 selection for UI.
+  // Host needs Refs to access latest values inside async/event closures without stale state
+  const p2SelectedCardIdRef = useRef<string | null>(null);
   const [p1SelectedCardId, setP1SelectedCardId] = useState<string | null>(null);
-  const [p2SelectedCardId, setP2SelectedCardId] = useState<string | null>(null);
+  const [p2SelectedCardId, setP2SelectedCardId] = useState<string | null>(null); // For UI Sync
   
   // UI State
   const [showGallery, setShowGallery] = useState(false);
@@ -152,7 +153,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           // HOST Logic
           if (msg.type === 'PLAYER_ACTION') {
               const action = msg.payload as GameActionPayload;
-              // Validate: Only process if it's from Player 2 (Client)
               processGameAction(2, action);
           }
       } else {
@@ -160,10 +160,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           if (msg.type === 'GAME_STATE_SYNC') {
               // IMPORTANT: Hydrate the state to re-attach functions
               const syncedState = hydrateGameState(msg.payload);
-              setGameState(prev => {
-                  // Client uses synced state
-                  return syncedState;
-              });
+              setGameState(syncedState);
           }
       }
   };
@@ -225,7 +222,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               // Host initializes game and sends initial state
               const newState = initializeGame();
               setGameState(newState);
-              // Send initial sync triggered by useEffect when gameState changes
           }
       });
 
@@ -278,13 +274,14 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       const gs = gameStateRef.current;
       const player = playerId === 1 ? gs.player1 : gs.player2;
 
-      console.log(`[HOST] Processing Action from P${playerId}:`, action);
+      // console.log(`[HOST] Processing Action from P${playerId}:`, action);
 
       if (action.actionType === 'UPDATE_SELECTION') {
           // Host records P2 selection based on what client sent (Absolute Update)
           // cardId can be null, which means deselect
           if (playerId === 2) {
-              setP2SelectedCardId(action.cardId || null);
+              p2SelectedCardIdRef.current = action.cardId || null;
+              setP2SelectedCardId(action.cardId || null); // Update state for UI if needed (Host usually doesn't see P2 select)
           }
           
           // Execute Discard Logic immediately if phase matches and cardId is present
@@ -325,56 +322,64 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   // --- Phase Auto-Trigger Logic (Host Only) ---
-  // Watches playerReadyState and advances phase if both are ready
-  useEffect(() => {
-      if (role !== 'HOST' || !gameState) return;
-
-      const p1Ready = gameState.playerReadyState[1];
-      const p2Ready = gameState.playerReadyState[2];
-
-      // Only trigger if both ready AND not already resolving something
-      if (p1Ready && p2Ready && !gameState.isResolving) {
-          console.log("[HOST] Both players ready. Executing phase logic...");
-          
-          // Reset ready states immediately to prevent double fire
-          setGameState(prev => prev ? ({ ...prev, playerReadyState: { 1: false, 2: false } }) : null);
-
-          // Execute Logic based on Phase
-          if (gameState.phase === GamePhase.DRAW) {
-              executeDrawPhase({ gameState, setGameState, createEffectContext });
-          } 
-          else if (gameState.phase === GamePhase.SET) {
-              executeSetPhase({ 
-                  setGameState, 
-                  p1SelectedCardId, 
-                  p2SelectedCardId, // Using the tracked P2 selection
-                  setP1SelectedCardId, 
-                  setP2SelectedCardId 
-              });
-          }
-          else if (gameState.phase === GamePhase.REVEAL) {
-              if (gameState.instantWindow === InstantWindow.BEFORE_REVEAL) {
-                  executeFlipCards({ gameState, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId });
-              } else if (gameState.instantWindow === InstantWindow.AFTER_REVEAL) {
-                  executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
-              }
-          }
-          else if (gameState.phase === GamePhase.DISCARD) {
-              executeDiscardPhase({ gameState, setGameState, createEffectContext });
-          }
-      }
-  }, [gameState?.playerReadyState, gameState?.phase, gameState?.instantWindow, role, p1SelectedCardId, p2SelectedCardId]);
-
-
-  // --- Logic Helpers (Host Only) ---
   const handleToggleReady = (pid: number) => {
       setGameState(prev => {
           if (!prev) return null;
-          return {
-              ...prev,
-              playerReadyState: { ...prev.playerReadyState, [pid]: !prev.playerReadyState[pid] }
-          };
+          const nextReadyState = { ...prev.playerReadyState, [pid]: !prev.playerReadyState[pid] };
+          
+          // CHECK FOR PHASE ADVANCEMENT
+          const p1Ready = nextReadyState[1];
+          const p2Ready = nextReadyState[2];
+
+          if (p1Ready && p2Ready && !prev.isResolving) {
+              // Trigger next phase immediately
+              setTimeout(() => advancePhase(prev), 50); // Small timeout to allow state sync of "Both Ready" first
+              
+              // Reset ready states in the next tick via advancePhase logic or here?
+              // Better to do it here to prevent double trigger? 
+              // Actually, advancePhase will update state, which overrides this.
+              // But we should return the "Both Ready" state first so the Client sees it briefly.
+          }
+
+          return { ...prev, playerReadyState: nextReadyState };
       });
+  };
+
+  const advancePhase = (currentState: GameState) => {
+      console.log("[HOST] Executing phase advancement...");
+      
+      // 1. Reset Ready State immediately
+      setGameState(prev => prev ? ({ ...prev, playerReadyState: { 1: false, 2: false } }) : null);
+
+      // 2. Execute Phase Logic
+      if (currentState.phase === GamePhase.DRAW) {
+          executeDrawPhase({ gameState: gameStateRef.current, setGameState, createEffectContext });
+      } 
+      else if (currentState.phase === GamePhase.SET) {
+          executeSetPhase({ 
+              setGameState, 
+              p1SelectedCardId, 
+              p2SelectedCardId: p2SelectedCardIdRef.current, // Use REF for fresh value
+              setP1SelectedCardId, 
+              setP2SelectedCardId: (val: string | null) => {
+                  p2SelectedCardIdRef.current = val;
+                  setP2SelectedCardId(val);
+              }
+          });
+      }
+      else if (currentState.phase === GamePhase.REVEAL) {
+          if (currentState.instantWindow === InstantWindow.BEFORE_REVEAL) {
+              executeFlipCards({ gameState: gameStateRef.current, setGameState, addLog, setP1SelectedCardId, setP2SelectedCardId: (val: string | null) => {
+                  p2SelectedCardIdRef.current = val;
+                  setP2SelectedCardId(val);
+              }});
+          } else if (currentState.instantWindow === InstantWindow.AFTER_REVEAL) {
+              executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
+          }
+      }
+      else if (currentState.phase === GamePhase.DISCARD) {
+          executeDiscardPhase({ gameState: gameStateRef.current, setGameState, createEffectContext });
+      }
   };
 
   // --- Visual Events Cleanup ---
@@ -412,14 +417,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   // --- Interactions (Both Sides) ---
   const handleCardClick = (player: PlayerState, card: Card) => {
-    // Only allow clicking your own cards
     const myId = role === 'HOST' ? 1 : 2;
     if (player.id !== myId) return;
-    
     if (!gameState) return;
     if (gameState?.isResolving || gameState?.phase === GamePhase.GAME_OVER) return;
 
-    // 1. Update Local UI Selection (Instant Feedback)
+    // 1. Update Local UI Selection
     let newSelectionId: string | null = null;
     if (myId === 1) {
         newSelectionId = card.instanceId === p1SelectedCardId ? null : card.instanceId;
@@ -429,12 +432,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         setP2SelectedCardId(newSelectionId);
     }
 
-    // 2. Send Action to Host (if Client) or Process Locally (if Host)
+    // 2. Send Action
     if (role === 'CLIENT') {
-        // IMPORTANT: Send the absolute state (newSelectionId) instead of just "I clicked this".
         sendNetworkMessage('PLAYER_ACTION', { actionType: 'UPDATE_SELECTION', cardId: newSelectionId });
     } else {
-        // Host logic for Discard Phase
+        // Host logic for Discard Phase (Direct interaction)
         if (gameState.phase === GamePhase.DISCARD) {
              if (card.isTreasure) {
                  addLog(`[规则] 宝藏牌无法被弃置！`);
@@ -450,7 +452,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   const handleInstantUse = (cardInstanceId: string) => {
-      // Send intent to use instant
       if (role === 'HOST') {
           if (!gameState) return;
           const player = gameState.player1;
@@ -460,21 +461,13 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       }
   };
 
-  // Host Logic for Instants
   const handleInstantUseLogic = async (player: PlayerState, cardInstanceId: string | null) => {
-    if (!cardInstanceId || !gameState || gameState.isResolving) return;
+    if (!cardInstanceId || !gameStateRef.current || gameStateRef.current.isResolving) return;
     const card = player.hand.find(c => c.instanceId === cardInstanceId);
     if (!card || !card.onInstant) return;
 
-    if (card.isLocked) {
-        addLog(`P${player.id}: 此牌被锁定，无法使用。`);
-        return;
-    }
-
-    if (card.canInstant && !card.canInstant(gameState.instantWindow)) {
-       addLog(`P${player.id}: 当前时机无法使用此卡的插入效果。`);
-       return;
-    }
+    if (card.isLocked) return;
+    if (card.canInstant && !card.canInstant(gameStateRef.current.instantWindow)) return;
     
     setGameState(prev => prev ? ({ ...prev, isResolving: true }) : null);
     await triggerVisualEffect('INSTANT', card, player.id, "发动插入特效！");
@@ -502,7 +495,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     });
 
     if (player.id === 1) setP1SelectedCardId(null);
-    else setP2SelectedCardId(null); // Host resets P2 tracking if needed
+    else {
+        p2SelectedCardIdRef.current = null;
+        setP2SelectedCardId(null);
+    }
   };
   
   // --- Viewer Handlers ---
@@ -518,11 +514,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           cards = player.discardPile;
           title = `${player.name} 的弃牌堆`;
       } else if (type === 'DECK') {
-          // In Online mode, you can only see your own deck usually, or if allowed by effect
-          // Here strictly debugging/viewing own deck? 
-          if (pid !== (role === 'HOST' ? 1 : 2)) {
-              return; // Cannot view opponent deck freely
-          }
+          if (pid !== (role === 'HOST' ? 1 : 2)) return;
           cards = player.deck;
           title = `${player.name} 的抽牌堆 (查看)`;
           sorted = true;
@@ -537,11 +529,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   // --- Ready Button Handler ---
   const handleReadyClick = () => {
-      const myId = role === 'HOST' ? 1 : 2;
-      
       if (role === 'HOST') {
           handleToggleReady(1);
       } else {
+          // Optimistic update for UI responsiveness? No, wait for server sync to avoid desync.
+          // Just send message.
           sendNetworkMessage('PLAYER_ACTION', { actionType: 'TOGGLE_READY' });
       }
   };
@@ -573,12 +565,10 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   
   let canReady = true;
   if (phase === GamePhase.SET) {
-      // Must select a card to set unless hand is empty
       if (myHand.length > 0 && !mySelectionId) canReady = false;
   } else if (phase === GamePhase.DISCARD) {
-      // Must discard if over limit
       const mustDiscard = myHandCount > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
-      if (mustDiscard) canReady = false; // Cannot end turn if need to discard
+      if (mustDiscard) canReady = false; 
   }
 
   const myReady = playerReadyState[myId];
@@ -587,13 +577,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const getActionButton = () => {
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     
-    // Waiting for opponent visual
     if (myReady && !oppReady) {
         return (
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-2 w-full">
                 <button 
                     onClick={handleReadyClick} 
-                    className="w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all border-b-4 bg-emerald-800 text-emerald-200 border-emerald-950 active:translate-y-1 active:border-b-0"
+                    className="w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all border-b-4 bg-emerald-800 text-emerald-200 border-emerald-950 active:translate-y-1 active:border-b-0 hover:bg-emerald-700"
                 >
                     已准备 (取消)
                 </button>
@@ -603,7 +592,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     }
 
     if (myReady && oppReady) {
-        return <div className="text-emerald-500 font-bold animate-pulse">同步中...</div>;
+        return <div className="text-emerald-500 font-bold animate-pulse text-lg">处理中...</div>;
     }
 
     const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
@@ -676,11 +665,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       <div className="flex-grow flex flex-col relative overflow-hidden z-10">
         <PlayerArea 
           player={oppPlayer} isOpponent phase={phase} 
-          selectedCardId={null} mustDiscard={false} // Opponent UI usually static/hidden
+          selectedCardId={null} mustDiscard={false} 
           canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
           onSelect={(c) => {}} onInstant={(id) => {}}
           onViewDiscard={() => openPileView('DISCARD', oppPlayer.id)}
-          onViewDeck={() => {}} // Cannot view opp deck
+          onViewDeck={() => {}} 
           onViewVault={() => openPileView('VAULT', oppPlayer.id)}
         />
         
