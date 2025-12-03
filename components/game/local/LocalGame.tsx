@@ -336,7 +336,10 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
           const key = player.id === 1 ? 'player1' : 'player2';
           const p = prev[key];
           const stillInHand = p.hand.find(c => c.instanceId === card.instanceId);
-          if (stillInHand) {
+          
+          // Fix: Check if ID matches. If ID changed, it means card transformed and should stay in hand.
+          // This prevents "Cups Wheel" or other transform instants from being auto-discarded.
+          if (stillInHand && stillInHand.id === card.id) {
              return {
                 ...prev,
                 isResolving: false,
@@ -347,6 +350,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
                 }
              };
           }
+          // If not in hand or transformed (ID changed), do not discard.
           return { ...prev, isResolving: false };
       });
 

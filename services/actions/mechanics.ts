@@ -175,7 +175,10 @@ export const transformCard = (ctx: EffectContext, targetPlayerId: number, cardIn
             return prev;
         }
 
-        const newDef = candidates[Math.floor(Math.random() * candidates.length)];
+        // Exclude the current card definition from candidates to ensure it changes into "another" card
+        const validCandidates = candidates.filter(c => c.id !== targetCard!.id);
+        const newDef = validCandidates[Math.floor(Math.random() * validCandidates.length)];
+        
         const newCard: Card = {
             ...newDef,
             instanceId: targetCard.instanceId, // Preserve ID
