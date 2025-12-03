@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Card, CardDefinition } from '../types';
 import { SUIT_COLORS, SUIT_ICONS, KEYWORD_DESCRIPTIONS, KEYWORD_DISPLAY_NAMES } from '../constants';
@@ -199,8 +200,8 @@ export const CardComponent: React.FC<CardComponentProps> = ({
   const keywordsToShow = card.keywords && card.keywords.length > 0 ? card.keywords : [];
   const marksToShow = card.marks || [];
   
-  // Right Side Tooltip (Keywords)
-  const keywordTooltip = showTooltip && keywordsToShow.length > 0 ? (
+  // Right Side Tooltip (Keywords) - ONLY SHOW IF FACE UP
+  const keywordTooltip = showTooltip && isFaceUp && keywordsToShow.length > 0 ? (
      <div 
         className={`absolute top-0 z-[9999] pointer-events-none flex flex-col gap-1.5 w-48 bg-stone-950/95 text-stone-200 p-2.5 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.9)] border border-stone-500/50 backdrop-blur-xl
            ${tooltipSide === 'right' ? 'left-[105%]' : 'right-[105%]'}`}
@@ -225,7 +226,8 @@ export const CardComponent: React.FC<CardComponentProps> = ({
      </div>
   ) : null;
 
-  const marksTooltip = showTooltip && marksToShow.length > 0 ? (
+  // Marks Tooltip - ONLY SHOW IF FACE UP (Hidden cards don't show marks via hover)
+  const marksTooltip = showTooltip && isFaceUp && marksToShow.length > 0 ? (
      <div 
         className={`absolute top-0 z-[9999] pointer-events-none flex flex-col gap-2 w-48 bg-stone-950/95 text-stone-200 p-2 rounded-lg shadow-[0_0_30px_rgba(0,0,0,0.9)] border border-stone-500/50 backdrop-blur-xl
            right-[105%] mr-1`} // Force Left Side
