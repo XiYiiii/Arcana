@@ -60,6 +60,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const [p1SelectedCardId, setP1SelectedCardId] = useState<string | null>(null);
   const [p2SelectedCardId, setP2SelectedCardId] = useState<string | null>(null); // For UI Sync
   
+  // Phase Processing Lock (Prevents double execution)
+  const phaseLockRef = useRef(false);
+
   // UI State
   const [showGallery, setShowGallery] = useState(false);
   const [viewingPile, setViewingPile] = useState<{ type: 'DISCARD' | 'DECK' | 'VAULT', pid: number, cards: Card[], title: string, sorted?: boolean } | null>(null);
@@ -290,25 +293,34 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const handleToggleReady = (pid: number) => {
       setGameState(prev => {
           if (!prev) return null;
-          
-          // Toggle Ready State
+          // Just toggle Ready State here. 
+          // Phase advancement is now handled by the useEffect watching this state.
           const currentReady = prev.playerReadyState[pid];
           const nextReadyState = { ...prev.playerReadyState, [pid]: !currentReady };
-          
-          // CHECK FOR PHASE ADVANCEMENT
-          const p1Ready = nextReadyState[1];
-          const p2Ready = nextReadyState[2];
-
-          // If both ready, trigger advance immediately (in next tick to allow sync of ready state)
-          if (p1Ready && p2Ready && !prev.isResolving) {
-              setTimeout(() => advancePhase(prev), 100);
-          }
-
           return { ...prev, playerReadyState: nextReadyState };
       });
   };
 
+  // --- Automatic Phase Advancement ---
+  // Detects when both players are ready and advances. Protected by phaseLockRef to prevent double execution.
+  useEffect(() => {
+      if (roleRef.current !== 'HOST' || !gameState) return;
+      const { playerReadyState, isResolving } = gameState;
+      
+      // If both ready AND not already resolving AND not locked
+      if (playerReadyState[1] && playerReadyState[2] && !isResolving && !phaseLockRef.current) {
+          phaseLockRef.current = true;
+          advancePhase(gameState);
+          
+          // Release lock after a safety delay (state update is async)
+          // The advancePhase sets isResolving=true immediately, which invalidates this check anyway.
+          setTimeout(() => { phaseLockRef.current = false; }, 500);
+      }
+  }, [gameState?.playerReadyState, gameState?.isResolving]);
+
   const advancePhase = (currentState: GameState) => {
+      console.log("[HOST] Advancing Phase logic triggered.");
+      
       // ATOMIC UPDATE: Reset Ready AND Set resolving to avoid UI flickering for client
       setGameState(prev => prev ? ({ 
           ...prev, 
@@ -323,9 +335,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           executeDrawPhase({ gameState: gs, setGameState, createEffectContext });
       } 
       else if (gs.phase === GamePhase.SET) {
-          // Debugging set phase
-          console.log("[HOST] Executing Set Phase. P1 Selection:", p1SelectedCardId, "P2 Selection:", p2SelectedCardIdRef.current);
-          
           executeSetPhase({ 
               setGameState, 
               p1SelectedCardId, 
@@ -392,12 +401,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
       if (action.actionType === 'UPDATE_SELECTION') {
           if (playerId === 2) {
-              // Ensure we are not setting null/undefined if it's meant to be a selection
-              // If client sends explicit null (deselect), it's fine.
               p2SelectedCardIdRef.current = action.cardId || null;
               setP2SelectedCardId(action.cardId || null);
           }
-          if (gs.phase === GamePhase.DISCARD && action.cardId) {
+      }
+      else if (action.actionType === 'DISCARD_CARD' && action.cardId) {
+          if (gs.phase === GamePhase.DISCARD) {
               const card = player.hand.find(c => c.instanceId === action.cardId);
               if (card && !card.isTreasure) {
                   const handCount = player.hand.filter(c => !c.isTreasure).length;
@@ -428,6 +437,27 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     if (!gameState) return;
     if (gameState?.isResolving || gameState?.phase === GamePhase.GAME_OVER) return;
 
+    // Discard Phase Logic (Explicit Action)
+    if (gameState.phase === GamePhase.DISCARD) {
+         if (card.isTreasure) {
+             // Just Log locally if I am host, or do nothing if client (Host logs will sync)
+             if(role === 'HOST') addLog(`[规则] 宝藏牌无法被弃置！`);
+             return;
+         }
+         
+         const handCount = player.hand.filter(c => !c.isTreasure).length;
+         if (handCount > player.maxHandSize && !player.skipDiscardThisTurn) {
+             if (role === 'HOST') {
+                 const ctx = createEffectContext(player.id, card);
+                 discardCards(ctx, player.id, [card.instanceId]);
+             } else {
+                 sendNetworkMessage('PLAYER_ACTION', { actionType: 'DISCARD_CARD', cardId: card.instanceId });
+             }
+         }
+         return; // Stop here, do not select
+    }
+
+    // Standard Selection Logic (Set/Instant)
     let newSelectionId: string | null = null;
     if (myId === 1) {
         newSelectionId = card.instanceId === p1SelectedCardId ? null : card.instanceId;
@@ -439,19 +469,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
     if (role === 'CLIENT') {
         sendNetworkMessage('PLAYER_ACTION', { actionType: 'UPDATE_SELECTION', cardId: newSelectionId });
-    } else {
-        // Host discard logic
-        if (gameState.phase === GamePhase.DISCARD) {
-             if (card.isTreasure) {
-                 addLog(`[规则] 宝藏牌无法被弃置！`);
-                 return;
-             }
-             const handCount = player.hand.filter(c => !c.isTreasure).length;
-             if (handCount > player.maxHandSize && !player.skipDiscardThisTurn) {
-                 const ctx = createEffectContext(player.id, card);
-                 discardCards(ctx, player.id, [card.instanceId]);
-             }
-        }
     }
   };
 

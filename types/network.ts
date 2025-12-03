@@ -14,7 +14,7 @@ export interface NetworkMessage {
 }
 
 // Actions that a player can perform
-export type GameActionType = 'UPDATE_SELECTION' | 'USE_INSTANT' | 'CONFIRM_INTERACTION' | 'TOGGLE_READY';
+export type GameActionType = 'UPDATE_SELECTION' | 'USE_INSTANT' | 'CONFIRM_INTERACTION' | 'TOGGLE_READY' | 'DISCARD_CARD';
 
 export interface GameActionPayload {
   actionType: GameActionType;
