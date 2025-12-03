@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { PendingEffect } from '../../types';
 import { CardComponent } from '../CardComponent';
@@ -61,7 +62,8 @@ export const EffectOverlay = ({ effect, onDismiss }: { effect: PendingEffect, on
   }
 
   // Positioning and Animation Logic based on Player ID
-  const positionClass = isP1 ? "left-6 items-start" : "right-6 items-end";
+  // P1 moved to left-[280px] to clear the sidebar (w-64 = 256px + padding)
+  const positionClass = isP1 ? "left-[280px] items-start" : "right-6 items-end";
   
   // Animation Origin: P1 slides from left (-20), P2 slides from right (20)
   const startTranslate = isP1 ? '-translate-x-20' : 'translate-x-20';

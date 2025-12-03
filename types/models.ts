@@ -11,6 +11,7 @@ export type EffectContext = {
   setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
   log: (msg: string) => void;
   isReversed?: boolean; // If true, targets should be swapped
+  gameMode?: 'LOCAL' | 'ONLINE'; // New: To control log privacy
 };
 
 export interface CardDefinition {

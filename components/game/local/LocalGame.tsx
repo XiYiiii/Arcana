@@ -11,6 +11,7 @@ import { PlayerArea } from '../../PlayerArea';
 import { FieldArea } from '../../FieldArea';
 import { InteractionOverlay, EffectOverlay, GameOverOverlay, DebugOverlay, GalleryOverlay, CardPileOverlay } from '../../overlays';
 import { VisualEffectsLayer } from '../../VisualEffectsLayer';
+import { GameLogSidebar } from '../../GameLogSidebar';
 
 // Import Logic Phases
 import { executeDrawPhase } from '../../../logic/phases/draw';
@@ -56,7 +57,8 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
        card,
        setGameState,
        log: addLog,
-       isReversed: p?.isReversed
+       isReversed: p?.isReversed,
+       gameMode: 'LOCAL' // Explicitly set mode
      };
   };
 
@@ -449,128 +451,126 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
   };
 
   return (
-    <div className="min-h-screen bg-stone-900 flex flex-col font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
+    <div className="min-h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
-      {/* Unified Background */}
-      <div className="absolute inset-0 bg-stone-900 z-0"></div>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
-      <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
-      
-      {/* Visual Effects Layer */}
-      <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
+      {/* LEFT SIDEBAR - LOGS */}
+      <GameLogSidebar logs={gameState.logs} />
 
-      {/* Top Bar */}
-      <div className="absolute top-4 right-4 z-50 flex gap-3">
-         <button 
-           onClick={onExit} 
-           className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur"
-         >
-           退出游戏
-         </button>
-         <button 
-           onClick={() => setShowGallery(!showGallery)} 
-           className="text-[10px] font-serif font-bold bg-stone-900/60 text-amber-600 hover:text-amber-500 px-4 py-2 rounded border border-amber-900/30 backdrop-blur transition-all hover:shadow-[0_0_15px_rgba(180,83,9,0.2)]"
-         >
-           📖 卡牌图鉴
-         </button>
-         <button 
-           onClick={() => setShowDebug(!showDebug)} 
-           className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur"
-         >
-           调试
-         </button>
-      </div>
+      {/* RIGHT - MAIN GAME AREA */}
+      <div className="flex-1 flex flex-col relative h-screen overflow-hidden">
+          {/* Unified Background */}
+          <div className="absolute inset-0 bg-stone-900 z-0"></div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
+          <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
+          
+          {/* Visual Effects Layer */}
+          <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
 
-      {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
-      
-      {viewingPile && (
-          <CardPileOverlay 
-              title={viewingPile.title} 
-              cards={viewingPile.cards} 
-              onClose={() => setViewingPile(null)} 
-              sorted={viewingPile.sorted}
-          />
-      )}
+          {/* Top Bar */}
+          <div className="absolute top-4 right-4 z-50 flex gap-3">
+             <button 
+               onClick={onExit} 
+               className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur"
+             >
+               退出游戏
+             </button>
+             <button 
+               onClick={() => setShowGallery(!showGallery)} 
+               className="text-[10px] font-serif font-bold bg-stone-900/60 text-amber-600 hover:text-amber-500 px-4 py-2 rounded border border-amber-900/30 backdrop-blur transition-all hover:shadow-[0_0_15px_rgba(180,83,9,0.2)]"
+             >
+               📖 卡牌图鉴
+             </button>
+             <button 
+               onClick={() => setShowDebug(!showDebug)} 
+               className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur"
+             >
+               调试
+             </button>
+          </div>
 
-      {showDebug && (
-          <DebugOverlay 
-             gameState={gameState} 
-             setGameState={setGameState} 
-             createEffectContext={createEffectContext} 
-             onClose={() => setShowDebug(false)} 
-          />
-      )}
+          {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
+          
+          {viewingPile && (
+              <CardPileOverlay 
+                  title={viewingPile.title} 
+                  cards={viewingPile.cards} 
+                  onClose={() => setViewingPile(null)} 
+                  sorted={viewingPile.sorted}
+              />
+          )}
 
-      {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
-      {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
-      {interaction && <InteractionOverlay request={interaction} />}
+          {showDebug && (
+              <DebugOverlay 
+                 gameState={gameState} 
+                 setGameState={setGameState} 
+                 createEffectContext={createEffectContext} 
+                 onClose={() => setShowDebug(false)} 
+              />
+          )}
 
-      <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
-      
-      {/* Status Ticker */}
-      <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
-         <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
-         <span className="text-stone-400 font-serif">
-            {instantWindow === InstantWindow.NONE ? '等待中...' : 
-             instantWindow === InstantWindow.BEFORE_SET ? '置牌前时机' :
-             instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
-             instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
-         </span>
-         {gameState.field && (
-             <span className="ml-4 text-emerald-500 font-serif font-bold">
-                 🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
+          {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
+          {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
+          {interaction && <InteractionOverlay request={interaction} />}
+
+          <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
+          
+          {/* Status Ticker */}
+          <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
+             <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
+             <span className="text-stone-400 font-serif">
+                {instantWindow === InstantWindow.NONE ? '等待中...' : 
+                 instantWindow === InstantWindow.BEFORE_SET ? '置牌前时机' :
+                 instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
+                 instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
              </span>
-         )}
-         <span className="ml-4 text-xs font-bold text-stone-600">[本地双人模式]</span>
-      </div>
+             {gameState.field && (
+                 <span className="ml-4 text-emerald-500 font-serif font-bold">
+                     🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
+                 </span>
+             )}
+             <span className="ml-4 text-xs font-bold text-stone-600">[本地双人模式]</span>
+          </div>
 
-      {isResolving && !activeEffect && !interaction && (
-         <div className="absolute inset-0 z-[45] flex items-center justify-center pointer-events-none">
-            <div className="bg-black/70 text-amber-500 px-8 py-4 rounded-xl text-lg font-serif font-bold shadow-2xl backdrop-blur-md border border-amber-900/30 animate-pulse">
-               处理中...
-            </div>
-         </div>
-      )}
+          {isResolving && !activeEffect && !interaction && (
+             <div className="absolute inset-0 z-[45] flex items-center justify-center pointer-events-none">
+                <div className="bg-black/70 text-amber-500 px-8 py-4 rounded-xl text-lg font-serif font-bold shadow-2xl backdrop-blur-md border border-amber-900/30 animate-pulse">
+                   处理中...
+                </div>
+             </div>
+          )}
 
-      <div className="flex-grow flex flex-col relative overflow-hidden z-10">
-        <PlayerArea 
-          player={player2} isOpponent phase={phase} 
-          selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
-          canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => handleCardClick(player2, c)} onInstant={(id) => handleInstantUse(player2, id)}
-          onViewDiscard={() => openPileView('DISCARD', 2)}
-          onViewDeck={() => openPileView('DECK', 2)}
-          onViewVault={() => openPileView('VAULT', 2)}
-          enableControls={true} // Explicitly enable controls for P2 in Local Mode
-        />
-        
-        <FieldArea gameState={gameState} player1={player1} player2={player2} />
+          <div className="flex-grow flex flex-col relative overflow-hidden z-10">
+            <PlayerArea 
+              player={player2} isOpponent phase={phase} 
+              selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
+              canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => handleCardClick(player2, c)} onInstant={(id) => handleInstantUse(player2, id)}
+              onViewDiscard={() => openPileView('DISCARD', 2)}
+              onViewDeck={() => openPileView('DECK', 2)}
+              onViewVault={() => openPileView('VAULT', 2)}
+              enableControls={true} // Explicitly enable controls for P2 in Local Mode
+            />
+            
+            <FieldArea gameState={gameState} player1={player1} player2={player2} />
 
-        <PlayerArea 
-          player={player1} phase={phase} 
-          selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
-          canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => handleCardClick(player1, c)} onInstant={(id) => handleInstantUse(player1, id)}
-          onViewDiscard={() => openPileView('DISCARD', 1)}
-          onViewDeck={() => openPileView('DECK', 1)}
-          onViewVault={() => openPileView('VAULT', 1)}
-          enableControls={true} // Explicitly enable controls for P1 in Local Mode
-        />
-      </div>
+            <PlayerArea 
+              player={player1} phase={phase} 
+              selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
+              canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => handleCardClick(player1, c)} onInstant={(id) => handleInstantUse(player1, id)}
+              onViewDiscard={() => openPileView('DISCARD', 1)}
+              onViewDeck={() => openPileView('DECK', 1)}
+              onViewVault={() => openPileView('VAULT', 1)}
+              enableControls={true} // Explicitly enable controls for P1 in Local Mode
+            />
+          </div>
 
-      {/* Bottom Action Panel */}
-      <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex gap-6 h-40 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative">
-         <div className="w-1/3 max-w-xs flex flex-col items-center justify-center border-r border-stone-800/50 pr-4">
-            {getActionButton()}
-         </div>
-         <div className="w-2/3 flex-grow overflow-y-auto font-mono text-[10px] space-y-1 pl-2 mask-image-gradient-b">
-            {gameState.logs.map((log, i) => (
-               <div key={i} className="border-b border-stone-800/30 pb-0.5 text-stone-400 hover:text-stone-200 transition-colors">
-                  <span className="text-stone-600 mr-2">[{String(gameState.logs.length - i).padStart(3, '0')}]</span>
-                  {log}
-               </div>
-            ))}
-         </div>
+          {/* Bottom Action Panel - Modified to remove logs */}
+          <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex justify-center items-center h-24 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative shrink-0">
+             <div className="w-full max-w-sm flex items-center justify-center">
+                {getActionButton()}
+             </div>
+          </div>
       </div>
     </div>
   );

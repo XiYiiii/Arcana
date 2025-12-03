@@ -15,6 +15,7 @@ import { InteractionOverlay, EffectOverlay, GameOverOverlay, GalleryOverlay, Car
 import { NetworkDebugOverlay } from './NetworkDebugOverlay'; 
 import { VisualEffectsLayer } from '../../VisualEffectsLayer';
 import { ConnectionScreen } from './ConnectionScreen';
+import { GameLogSidebar } from '../../GameLogSidebar';
 
 // Import Logic Phases
 import { executeDrawPhase } from '../../../logic/phases/draw';
@@ -286,7 +287,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
        card,
        setGameState,
        log: addLog,
-       isReversed: p?.isReversed
+       isReversed: p?.isReversed,
+       gameMode: 'ONLINE' // Explicitly set mode
      };
   };
 
@@ -732,101 +734,105 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   return (
-    <div className="min-h-screen bg-stone-900 flex flex-col font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
-      <div className="absolute inset-0 bg-stone-900 z-0"></div>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
-      <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
+    <div className="min-h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
-      <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
+      {/* LEFT SIDEBAR - LOGS */}
+      <GameLogSidebar logs={gameState.logs} />
 
-      <div className="absolute top-4 right-4 z-50 flex gap-3">
-         <div className="flex items-center gap-2 px-3 py-2 bg-stone-900/60 rounded border border-stone-800 backdrop-blur text-[10px]">
-             <span className={`w-2 h-2 rounded-full ${connState==='CONNECTED'?'bg-emerald-500':'bg-red-500'}`}></span>
-             <span className="text-stone-400 font-bold">{role === 'HOST' ? '主机' : '客机'}</span>
-         </div>
-         <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出</button>
-         <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur">网络调试</button>
-      </div>
+      {/* RIGHT - MAIN GAME AREA */}
+      <div className="flex-1 flex flex-col relative h-screen overflow-hidden">
+          {/* Unified Background */}
+          <div className="absolute inset-0 bg-stone-900 z-0"></div>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
+          <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
+          
+          {/* Visual Effects Layer */}
+          <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
 
-      {showNetworkDebug && (
-          <NetworkDebugOverlay 
-              logs={networkLogs} 
-              role={role} 
-              onSimulateReceive={() => {}} 
-              onClearLogs={() => setNetworkLogs([])} 
-              onClose={() => setShowNetworkDebug(false)}
-          />
-      )}
+          {/* Top Bar */}
+          <div className="absolute top-4 right-4 z-50 flex gap-3">
+             <div className="flex items-center gap-2 px-3 py-2 bg-stone-900/60 rounded border border-stone-800 backdrop-blur text-[10px]">
+                 <span className={`w-2 h-2 rounded-full ${connState==='CONNECTED'?'bg-emerald-500':'bg-red-500'}`}></span>
+                 <span className="text-stone-400 font-bold">{role === 'HOST' ? '主机' : '客机'}</span>
+             </div>
+             <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出</button>
+             <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur">网络调试</button>
+          </div>
 
-      {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
-      
-      {viewingPile && (
-          <CardPileOverlay 
-              title={viewingPile.title} 
-              cards={viewingPile.cards} 
-              onClose={() => setViewingPile(null)} 
-              sorted={viewingPile.sorted}
-          />
-      )}
+          {showNetworkDebug && (
+              <NetworkDebugOverlay 
+                  logs={networkLogs} 
+                  role={role} 
+                  onSimulateReceive={() => {}} 
+                  onClearLogs={() => setNetworkLogs([])} 
+                  onClose={() => setShowNetworkDebug(false)}
+              />
+          )}
 
-      {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
-      {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={handleDismissEffect} />}
-      {showInteraction && <InteractionOverlay request={renderedInteraction!} />}
+          {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
+          
+          {viewingPile && (
+              <CardPileOverlay 
+                  title={viewingPile.title} 
+                  cards={viewingPile.cards} 
+                  onClose={() => setViewingPile(null)} 
+                  sorted={viewingPile.sorted}
+              />
+          )}
 
-      <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
-      
-      <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
-         <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
-         <span className="text-stone-400 font-serif">
-            {instantWindow === InstantWindow.NONE ? '等待中...' : 
-             instantWindow === InstantWindow.BEFORE_SET ? '置牌前时机' :
-             instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
-             instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
-         </span>
-         {gameState.field && (
-             <span className={`ml-4 font-serif font-bold ${gameState.field.active ? 'text-emerald-500' : 'text-stone-500'}`}>
-                 🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
+          {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
+          {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={handleDismissEffect} />}
+          {showInteraction && <InteractionOverlay request={renderedInteraction!} />}
+
+          <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
+          
+          {/* Status Ticker */}
+          <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
+             <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
+             <span className="text-stone-400 font-serif">
+                {instantWindow === InstantWindow.NONE ? '等待中...' : 
+                 instantWindow === InstantWindow.BEFORE_SET ? '置牌前时机' :
+                 instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
+                 instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
              </span>
-         )}
-         <span className="ml-4 text-xs font-bold text-stone-600">[联机模式 - {role === 'HOST' ? '主机' : '客户端'}]</span>
-      </div>
+             {gameState.field && (
+                 <span className={`ml-4 font-serif font-bold ${gameState.field.active ? 'text-emerald-500' : 'text-stone-500'}`}>
+                     🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
+                 </span>
+             )}
+             <span className="ml-4 text-xs font-bold text-stone-600">[联机模式 - {role === 'HOST' ? '主机' : '客户端'}]</span>
+          </div>
 
-      <div className="flex-grow flex flex-col relative overflow-hidden z-10">
-        <PlayerArea 
-          player={oppPlayer} isOpponent phase={phase} 
-          selectedCardId={null} mustDiscard={false}
-          canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => handleCardClick(oppPlayer, c)} onInstant={(id) => {}}
-          onViewDiscard={() => openPileView('DISCARD', myId === 1 ? 2 : 1)}
-          onViewDeck={() => openPileView('DECK', myId === 1 ? 2 : 1)}
-          onViewVault={() => openPileView('VAULT', myId === 1 ? 2 : 1)}
-        />
-        
-        <FieldArea gameState={gameState} player1={player1} player2={player2} />
+          <div className="flex-grow flex flex-col relative overflow-hidden z-10">
+            <PlayerArea 
+              player={oppPlayer} isOpponent phase={phase} 
+              selectedCardId={null} mustDiscard={false}
+              canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => handleCardClick(oppPlayer, c)} onInstant={(id) => {}}
+              onViewDiscard={() => openPileView('DISCARD', myId === 1 ? 2 : 1)}
+              onViewDeck={() => openPileView('DECK', myId === 1 ? 2 : 1)}
+              onViewVault={() => openPileView('VAULT', myId === 1 ? 2 : 1)}
+            />
+            
+            <FieldArea gameState={gameState} player1={player1} player2={player2} />
 
-        <PlayerArea 
-          player={myPlayer} phase={phase} 
-          selectedCardId={mySelectionId} mustDiscard={myPlayer.hand.filter(c => !c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn}
-          canSet={canSetMy} canInstant={!!canInstantMy} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => handleCardClick(myPlayer, c)} onInstant={(id) => handleInstantUse(id)}
-          onViewDiscard={() => openPileView('DISCARD', myId)}
-          onViewDeck={() => openPileView('DECK', myId)}
-          onViewVault={() => openPileView('VAULT', myId)}
-        />
-      </div>
+            <PlayerArea 
+              player={myPlayer} phase={phase} 
+              selectedCardId={mySelectionId} mustDiscard={myPlayer.hand.filter(c => !c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn}
+              canSet={canSetMy} canInstant={!!canInstantMy} isResolving={isResolving} instantWindow={instantWindow}
+              onSelect={(c) => handleCardClick(myPlayer, c)} onInstant={(id) => handleInstantUse(id)}
+              onViewDiscard={() => openPileView('DISCARD', myId)}
+              onViewDeck={() => openPileView('DECK', myId)}
+              onViewVault={() => openPileView('VAULT', myId)}
+            />
+          </div>
 
-      <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex gap-6 h-40 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative">
-         <div className="w-1/3 max-w-xs flex flex-col items-center justify-center border-r border-stone-800/50 pr-4">
-            {getActionButton()}
-         </div>
-         <div className="w-2/3 flex-grow overflow-y-auto font-mono text-[10px] space-y-1 pl-2 mask-image-gradient-b">
-            {gameState.logs.map((log, i) => (
-               <div key={i} className="border-b border-stone-800/30 pb-0.5 text-stone-400 hover:text-stone-200 transition-colors">
-                  <span className="text-stone-600 mr-2">[{String(gameState.logs.length - i).padStart(3, '0')}]</span>
-                  {log}
-               </div>
-            ))}
-         </div>
+          {/* Bottom Action Panel - Modified to remove logs */}
+          <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex justify-center items-center h-24 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative shrink-0">
+             <div className="w-full max-w-sm flex items-center justify-center">
+                {getActionButton()}
+             </div>
+          </div>
       </div>
     </div>
   );

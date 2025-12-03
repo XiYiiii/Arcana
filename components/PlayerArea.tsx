@@ -209,7 +209,10 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     const offset = idx - middle;
                     
                     const rotateDeg = offset * 5; 
-                    const translateY = Math.abs(offset) * 6 + (isOpponent ? 80 : 0);
+                    // Modified TranslateY for P1 (isOpponent=false) to move it up ~10-15px
+                    // Original: -5rem. New: -5.8rem.
+                    const translateY = Math.abs(offset) * 6 + (isOpponent ? 80 : -40); 
+                    
                     const isHovered = hoveredIndex === idx;
                     const isSelectedCard = selectedCardId === card.instanceId;
                     
@@ -217,8 +220,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     
                     const style: React.CSSProperties = {
                         transform: isHovered || isSelectedCard
-                            ? `translateY(${isOpponent ? '6rem' : '-5rem'}) scale(1.15) rotate(0deg)` 
-                            : `translateY(${translateY}px) rotate(${rotateDeg}deg) scale(0.55)`, 
+                            ? `translateY(${isOpponent ? '6rem' : '-6rem'}) scale(1.15) rotate(0deg)` 
+                            : `translateY(${translateY}px) rotate(${rotateDeg}deg) scale(0.6)`, 
                         zIndex: isHovered || isSelectedCard ? 50 : idx + 20, 
                         marginLeft: idx === 0 ? 0 : '-85px', 
                         transformOrigin: isOpponent ? 'center top' : 'center bottom',
