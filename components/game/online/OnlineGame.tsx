@@ -736,7 +736,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   return (
     <div className="min-h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
-      {/* LEFT SIDEBAR - LOGS */}
+      {/* LEFT SIDEBAR - LOGS - PASS CURRENT ID FOR ONLINE MODE */}
       <GameLogSidebar logs={gameState.logs} currentPlayerId={myId} />
 
       {/* RIGHT - MAIN GAME AREA */}
@@ -836,4 +836,4 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       </div>
     </div>
   );
-};
+}

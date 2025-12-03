@@ -453,7 +453,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
   return (
     <div className="min-h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
-      {/* LEFT SIDEBAR - LOGS */}
+      {/* LEFT SIDEBAR - LOGS - PASS NULL FOR LOCAL MODE */}
       <GameLogSidebar logs={gameState.logs} currentPlayerId={null} />
 
       {/* RIGHT - MAIN GAME AREA */}

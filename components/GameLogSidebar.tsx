@@ -20,7 +20,7 @@ const getLogStyle = (text: string) => {
   if (text.includes('任务')) return { icon: '📜', border: 'border-yellow-700/50', bg: 'bg-yellow-900/20' };
   if (text.includes('场地')) return { icon: '🏟️', border: 'border-indigo-900/50', bg: 'bg-indigo-950/30' };
   if (text.includes('夺取') || text.includes('获得')) return { icon: '🎁', border: 'border-orange-900/50', bg: 'bg-orange-950/30' };
-  if (text.includes('打出')) return { icon: '⚔️', border: 'border-stone-600', bg: 'bg-stone-800' };
+  if (text.includes('打出') || text.includes('翻开')) return { icon: '⚔️', border: 'border-stone-600', bg: 'bg-stone-800' };
   return { icon: '📝', border: 'border-stone-800', bg: 'bg-stone-900/50' };
 };
 
@@ -44,6 +44,20 @@ export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs, currentPla
       setHoveredCard(null);
   };
 
+  const renderCardName = (content: string, i: number, isPrivate: boolean = false) => {
+      const colorClass = isPrivate ? 'text-blue-400 border-blue-500/30 hover:bg-blue-900/50' : 'text-amber-400 border-amber-500/30 hover:bg-amber-900/50';
+      return (
+        <span 
+            key={i} 
+            className={`font-bold mx-0.5 cursor-help border-b px-0.5 rounded transition-colors ${colorClass}`}
+            onMouseEnter={(e) => handleMouseEnter(e, content)}
+            onMouseLeave={handleMouseLeave}
+        >
+            [{content}]
+        </span>
+      );
+  };
+
   const formatLogText = (text: string) => {
     // Regex matches [Card Name] (Public) OR {{Card Name}} (Hidden/Private)
     const parts = text.split(/(\[.*?\]|\{\{.*?\}\})/g);
@@ -52,21 +66,9 @@ export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs, currentPla
       // 1. Check for [Card Name] (Public info like Played, Discarded, or Local Mode Draw)
       if (part.startsWith('[') && part.endsWith(']')) {
         const content = part.slice(1, -1);
-        
         const isCard = CARD_DEFINITIONS.some(c => c.name === content);
-        
-        if (isCard) {
-            return (
-                <span 
-                    key={i} 
-                    className="text-amber-400 font-bold mx-0.5 cursor-help border-b border-amber-500/30 hover:bg-amber-900/50 px-0.5 rounded transition-colors"
-                    onMouseEnter={(e) => handleMouseEnter(e, content)}
-                    onMouseLeave={handleMouseLeave}
-                >
-                    {part}
-                </span>
-            );
-        }
+        if (isCard) return renderCardName(content, i, false);
+        // Fallback for non-card bracketed text
         return <span key={i} className="text-stone-300 font-bold mx-0.5">{part}</span>;
       }
 
@@ -74,34 +76,21 @@ export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs, currentPla
       if (part.startsWith('{{') && part.endsWith('}}')) {
           const content = part.slice(2, -2);
           
-          // Determine if this log entry belongs to the current player
-          // We assume the log text contains "Player 1" or "Player 2" or "P1"/"P2" to identify owner
-          // Or we check if currentPlayerId is null (Local mode sees all)
-          
-          let isMyLog = false;
+          let isVisible = false;
           if (currentPlayerId === null) {
-              isMyLog = true;
+              isVisible = true; // Local mode always sees everything
           } else {
-              // Check if the FULL text line contains the player's identifier
-              const myName = `Player ${currentPlayerId}`;
-              if (text.includes(myName)) isMyLog = true;
+              // Check if the log belongs to the current player
+              // Assumes standard log format "Player X ..."
+              if (text.includes(`Player ${currentPlayerId}`)) {
+                  isVisible = true;
+              }
           }
 
-          if (isMyLog) {
-              // I am allowed to see this card
-              return (
-                <span 
-                    key={i} 
-                    className="text-blue-400 font-bold mx-0.5 cursor-help border-b border-blue-500/30 hover:bg-blue-900/50 px-0.5 rounded transition-colors"
-                    onMouseEnter={(e) => handleMouseEnter(e, content)}
-                    onMouseLeave={handleMouseLeave}
-                >
-                    [{content}]
-                </span>
-              );
+          if (isVisible) {
+              return renderCardName(content, i, true);
           } else {
-              // I am NOT allowed to see this card
-              return <span key={i} className="text-stone-500 italic mx-0.5">🎴 暗牌</span>;
+              return <span key={i} className="text-stone-500 italic mx-0.5 select-none">🎴 暗牌</span>;
           }
       }
       
@@ -141,7 +130,7 @@ export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs, currentPla
                   className={`relative group flex items-start gap-2 p-2.5 rounded-lg border ${style.border} ${style.bg} transition-all hover:brightness-125 hover:border-stone-500 animate-in slide-in-from-left-2 duration-300`}
                >
                   <div className="mt-0.5 text-base shrink-0 select-none grayscale group-hover:grayscale-0 transition-all">{style.icon}</div>
-                  <div className="text-[10px] leading-relaxed font-medium break-words">
+                  <div className="text-[10px] leading-relaxed font-medium break-words w-full">
                       {formatLogText(log)}
                   </div>
                   
