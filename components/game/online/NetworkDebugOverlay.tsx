@@ -26,14 +26,6 @@ export const NetworkDebugOverlay: React.FC<NetworkDebugOverlayProps> = ({
     }
   }, [logs]);
 
-  const safeStringify = (data: any) => {
-      try {
-          return JSON.stringify(data, null, 2);
-      } catch (e) {
-          return "<< CIRCULAR / NON-SERIALIZABLE CONTENT >>";
-      }
-  };
-
   return (
     <div className="fixed top-20 right-4 w-96 bg-black/90 border border-green-500/50 rounded-lg shadow-[0_0_20px_rgba(0,255,0,0.2)] flex flex-col font-mono text-xs z-[9999] max-h-[80vh] backdrop-blur-md animate-in slide-in-from-right-10 duration-300">
       
@@ -78,7 +70,7 @@ export const NetworkDebugOverlay: React.FC<NetworkDebugOverlayProps> = ({
               
               <div className="bg-black/50 p-1.5 rounded overflow-x-auto">
                 <pre className={`whitespace-pre-wrap break-all ${isOut ? 'text-blue-300' : 'text-orange-300'}`}>
-                  {safeStringify(log.payload)}
+                  {JSON.stringify(log.payload, null, 2)}
                 </pre>
               </div>
             </div>
@@ -88,7 +80,7 @@ export const NetworkDebugOverlay: React.FC<NetworkDebugOverlayProps> = ({
 
       {/* Footer Status */}
       <div className="p-2 border-t border-green-500/30 text-center text-green-600 bg-black/40 text-[10px]">
-         STATUS: CONNECTED (Secure)
+         STATUS: CONNECTED (Simulated Loopback)
       </div>
     </div>
   );

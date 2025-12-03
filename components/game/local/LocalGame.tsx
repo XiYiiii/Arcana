@@ -58,8 +58,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
        setGameState,
        log: addLog,
        isReversed: p?.isReversed,
-       gameMode: 'LOCAL', // Explicitly set mode
-       allCards: CARD_DEFINITIONS
+       gameMode: 'LOCAL' // Explicitly set mode
      };
   };
 

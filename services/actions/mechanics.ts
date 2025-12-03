@@ -3,6 +3,7 @@ import { EffectContext, Card, VisualEvent } from '../../types';
 import { getOpponentId, addMarkToCard } from './utils';
 import { updateQuestProgress } from './quests';
 import { getArcanaNumber } from '../gameUtils';
+import { CARD_DEFINITIONS } from '../../data/cards';
 
 export const seizeCard = (ctx: EffectContext, cardInstanceId: string) => {
     ctx.setGameState(prev => {
@@ -141,13 +142,7 @@ export const blindSeize = (ctx: EffectContext, count: number = 1, markToAdd: str
 };
 
 export const transformCard = (ctx: EffectContext, targetPlayerId: number, cardInstanceId: string) => {
-    // Break Cycle: Use context-injected allCards, or fallback (if local dev without context fix, but we fixed it)
-    const candidates = ctx.allCards?.filter(c => !c.isTreasure) || [];
-
-    if (candidates.length === 0) {
-        console.warn("Transform failed: No card definitions found in context.");
-        return;
-    }
+    const candidates = CARD_DEFINITIONS.filter(c => !c.isTreasure);
 
     ctx.setGameState(prev => {
         if(!prev) return null;
