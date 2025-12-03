@@ -614,6 +614,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       return false;
   };
 
+  // Only show interaction overlay if it is FOR ME
+  const showInteraction = interaction && interaction.playerId === myId;
+
   const getActionButton = () => {
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     
@@ -682,7 +685,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
       {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
       {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={handleDismissEffect} />}
-      {interaction && <InteractionOverlay request={interaction} />}
+      {showInteraction && <InteractionOverlay request={interaction!} />}
 
       <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
       
@@ -695,7 +698,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
              instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
          </span>
          {gameState.field && (
-             <span className="ml-4 text-emerald-500 font-serif font-bold">
+             <span className={`ml-4 font-serif font-bold ${gameState.field.active ? 'text-emerald-500' : 'text-stone-500'}`}>
                  🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
              </span>
          )}

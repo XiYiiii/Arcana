@@ -34,8 +34,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
    return (
       <div className={`flex-1 flex flex-col w-full ${isOpponent ? 'pt-4' : 'pb-6'} relative transition-all duration-500 z-30`}>
          
-         {/* Player Info Panel */}
-         <div className={`absolute ${isOpponent ? 'top-4' : 'bottom-8'} left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-stone-950/80 px-6 py-2 rounded-full border border-stone-800/50 backdrop-blur-md shadow-xl pointer-events-none`}>
+         {/* Player Info Panel - Increased Z-Index to 60 to sit ABOVE cards (which go up to 50) */}
+         <div className={`absolute ${isOpponent ? 'top-4' : 'bottom-8'} left-1/2 -translate-x-1/2 z-[60] flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-stone-950/90 px-6 py-2 rounded-full border border-stone-700 backdrop-blur-md shadow-2xl pointer-events-none`}>
              {/* Avatar / Name */}
              <div className="flex items-center gap-2">
                  <div className={`w-8 h-8 rounded border ${isOpponent ? 'border-stone-600 bg-stone-800' : 'border-stone-500 bg-stone-800'} flex items-center justify-center shadow-lg`}>
@@ -80,21 +80,29 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                          {player.quests.map(q => (
                              <div 
                                 key={q.id} 
-                                className="flex flex-col items-center bg-stone-800 px-1.5 py-0.5 rounded border border-yellow-700/40 relative group cursor-help"
+                                className="flex flex-col items-center bg-stone-900 px-2 py-1 rounded border border-yellow-600 shadow-md relative group cursor-help transition-transform hover:scale-110"
                                 onMouseEnter={() => setHoveredQuestId(q.id)}
                                 onMouseLeave={() => setHoveredQuestId(null)}
                              >
-                                 <span className="text-[8px] text-yellow-500 font-bold leading-none mb-0.5 max-w-[50px] truncate">{q.name}</span>
-                                 <div className="w-full h-1 bg-stone-700 rounded-full overflow-hidden">
-                                     <div className="h-full bg-yellow-500 transition-all duration-500" style={{ width: `${(q.progress / q.target) * 100}%` }}></div>
+                                 <span className="text-[9px] text-yellow-500 font-black leading-none mb-1 max-w-[60px] truncate">{q.name}</span>
+                                 <div className="w-full h-1.5 bg-stone-800 rounded-full overflow-hidden border border-stone-700">
+                                     <div className="h-full bg-gradient-to-r from-yellow-700 to-yellow-400 transition-all duration-500" style={{ width: `${Math.min(100, (q.progress / q.target) * 100)}%` }}></div>
                                  </div>
                                  
                                  {/* Quest Tooltip */}
                                  {hoveredQuestId === q.id && (
-                                     <div className={`absolute left-1/2 -translate-x-1/2 ${isOpponent ? 'top-full mt-2' : 'bottom-full mb-2'} w-40 bg-stone-900/95 p-2 rounded border border-yellow-700/50 shadow-xl z-50 text-left`}>
-                                         <div className="text-[10px] font-bold text-yellow-500 mb-1">{q.name}</div>
-                                         <div className="text-[9px] text-stone-300 mb-1">{q.description}</div>
-                                         <div className="text-[8px] text-stone-500 font-mono">进度: {q.progress} / {q.target}</div>
+                                     <div className={`absolute left-1/2 -translate-x-1/2 ${isOpponent ? 'top-full mt-3' : 'bottom-full mb-3'} w-48 bg-stone-950/95 p-3 rounded-lg border border-yellow-600/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] z-[100] text-left pointer-events-none backdrop-blur-xl`}>
+                                         <div className="text-[11px] font-bold text-yellow-500 mb-1 flex justify-between items-center">
+                                             <span>{q.name}</span>
+                                             <span className="text-[9px] bg-stone-800 px-1.5 rounded text-yellow-200/70">{Math.round((q.progress / q.target) * 100)}%</span>
+                                         </div>
+                                         <div className="text-[10px] text-stone-300 mb-2 leading-tight border-b border-stone-800 pb-2">{q.description}</div>
+                                         <div className="text-[9px] text-stone-500 font-mono flex justify-between">
+                                             <span>当前: {q.progress}</span>
+                                             <span>目标: {q.target}</span>
+                                         </div>
+                                         {/* Arrow */}
+                                         <div className={`absolute left-1/2 -translate-x-1/2 w-0 h-0 border-8 border-transparent ${isOpponent ? 'bottom-full border-b-stone-950/95 -mb-[1px]' : 'top-full border-t-stone-950/95 -mt-[1px]'}`}></div>
                                      </div>
                                  )}
                              </div>
