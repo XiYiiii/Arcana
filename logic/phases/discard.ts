@@ -12,8 +12,12 @@ export const executeDiscardPhase = (
   if (!gameState) return;
   const { player1, player2 } = gameState;
 
-  const p1MustDiscard = player1.hand.length > player1.maxHandSize && !player1.skipDiscardThisTurn;
-  const p2MustDiscard = player2.hand.length > player2.maxHandSize && !player2.skipDiscardThisTurn;
+  // FIX: Filter out treasures when checking hand limit for phase progression
+  const p1HandCount = player1.hand.filter((c: any) => !c.isTreasure).length;
+  const p2HandCount = player2.hand.filter((c: any) => !c.isTreasure).length;
+
+  const p1MustDiscard = p1HandCount > player1.maxHandSize && !player1.skipDiscardThisTurn;
+  const p2MustDiscard = p2HandCount > player2.maxHandSize && !player2.skipDiscardThisTurn;
 
   if (p1MustDiscard || p2MustDiscard) return;
 

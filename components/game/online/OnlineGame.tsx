@@ -503,6 +503,33 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       processGameActionRef.current = processGameAction;
   }, [gameState, p1SelectedCardId, p2SelectedCardId]); // Deps needed to refresh closure
 
+  // --- Interaction Validation Helpers ---
+  const isCardConditionLocked = (player: PlayerState, c: Card): boolean => {
+      // Logic copied from LocalGame to ensure consistent validation
+      if (c.isLocked) return true; // Base lock
+      if (c.isTreasure) return false;
+
+      // Swords Star Field Logic
+      if (gameState?.field?.active && gameState.field.card.name.includes('宝剑·星星') && c.name.includes('太阳')) return false;
+
+      const lovers = player.hand.filter(x => x.marks.includes('mark-lovers') || x.marks.includes('mark-swords-lovers'));
+      const justice = player.hand.find(x => x.marks.includes('mark-justice'));
+      const wandsJustice = player.hand.find(x => x.marks.includes('mark-wands-justice'));
+      
+      const swordsLoversCount = player.hand.filter(x => x.marks.includes('mark-swords-lovers')).length;
+      const hasWandsLoversPair = player.hand.filter(x => x.marks.includes('mark-lovers')).length >= 2;
+      const hasJustice = !!justice;
+      const hasWandsJustice = !!wandsJustice;
+
+      if (hasWandsLoversPair && c.marks.includes('mark-lovers')) return true;
+      if (c.marks.includes('mark-swords-lovers') && swordsLoversCount >= 2) return true;
+      if (hasJustice && !c.marks.includes('mark-justice')) return true;
+      if (hasWandsJustice && !c.marks.includes('mark-wands-justice')) return true;
+      if (c.marks.includes('mark-sun')) return true;
+      
+      return false;
+  };
+
   // --- Interactions ---
   const handleCardClick = (player: PlayerState, card: Card) => {
     const myId = role === 'HOST' ? 1 : 2;
@@ -629,7 +656,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       return <ConnectionScreen onCreateGame={startHosting} onJoinGame={joinGame} onBack={onExit} isConnecting={connState === 'CONNECTING' || connState === 'HOSTING'} hostId={myPeerId} error={networkError} />;
   }
 
-  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, playerReadyState } = gameState;
+  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, playerReadyState, field } = gameState;
   const myId = role === 'HOST' ? 1 : 2;
   const myPlayer = myId === 1 ? player1 : player2;
   const oppPlayer = myId === 1 ? player2 : player1;
@@ -637,8 +664,18 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const myReady = playerReadyState[myId];
   const oppReady = playerReadyState[myId === 1 ? 2 : 1];
 
+  // Dynamic Validation for My Player
+  const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
+  const mySelCard = myPlayer.hand.find(c => c.instanceId === mySelectionId);
+  
+  const canSetMy = myPlayer.hand.length > 0 
+      ? (mySelCard && (mySelCard.canSet !== false || (isSwordsStarActive && mySelCard.name.includes('太阳'))) && !isCardConditionLocked(myPlayer, mySelCard)) 
+      : true; // Empty hand allows set (logic handles empty)
+
+  const canInstantMy = mySelCard && mySelCard.canInstant?.(instantWindow) && !mySelCard.isLocked;
+
   const isActionDisabled = () => {
-      if (phase === GamePhase.SET) return myPlayer.hand.length > 0 && !mySelectionId;
+      if (phase === GamePhase.SET) return myPlayer.hand.length > 0 && (!mySelectionId || !canSetMy); // Must select valid card
       if (phase === GamePhase.DISCARD) return myPlayer.hand.filter(c=>!c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
       return false;
   };
@@ -769,8 +806,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
         <PlayerArea 
           player={myPlayer} phase={phase} 
-          selectedCardId={mySelectionId} mustDiscard={role==='HOST' ? (player1.hand.length > MAX_HAND_SIZE && !player1.skipDiscardThisTurn) : (player2.hand.length > MAX_HAND_SIZE && !player2.skipDiscardThisTurn)}
-          canSet={true} canInstant={true} isResolving={isResolving} instantWindow={instantWindow}
+          selectedCardId={mySelectionId} mustDiscard={myPlayer.hand.filter(c => !c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn}
+          canSet={canSetMy} canInstant={!!canInstantMy} isResolving={isResolving} instantWindow={instantWindow}
           onSelect={(c) => handleCardClick(myPlayer, c)} onInstant={(id) => handleInstantUse(id)}
           onViewDiscard={() => openPileView('DISCARD', myId)}
           onViewDeck={() => openPileView('DECK', myId)}
