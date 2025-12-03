@@ -2,6 +2,7 @@
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, isTreasureInVault } from '../../../services/actions';
 import { TREASURE_WANDS } from './treasure';
+import { CARD_DESCRIPTIONS } from '../../descriptions';
 
 export const WANDS_EMPEROR: CardDefinition = {
     id: 'wands-emperor', name: '权杖·皇帝', suit: CardSuit.WANDS, rank: 204,
@@ -16,7 +17,7 @@ export const WANDS_EMPEROR: CardDefinition = {
           ...TREASURE_WANDS, 
           instanceId: `treasure-wands-${Date.now()}`, 
           marks: [],
-          description: TREASURE_WANDS.description || ""
+          description: CARD_DESCRIPTIONS[TREASURE_WANDS.id] || TREASURE_WANDS.description || ""
       };
       modifyPlayer(ctx, ctx.sourcePlayerId, p => ({ ...p, hand: [...p.hand, treasure] }));
       ctx.log("【皇帝】加冕！获得了【宝藏·权杖】！");

@@ -2,6 +2,7 @@
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, isTreasureInVault } from '../../../services/actions';
 import { TREASURE_PENTACLES } from './treasure';
+import { CARD_DESCRIPTIONS } from '../../descriptions';
 
 export const PENTACLES_TEMPERANCE: CardDefinition = {
     id: 'pentacles-temperance', name: '星币·节制', suit: CardSuit.PENTACLES, rank: 414,
@@ -16,7 +17,7 @@ export const PENTACLES_TEMPERANCE: CardDefinition = {
           ...TREASURE_PENTACLES, 
           instanceId: `treasure-pentacles-${Date.now()}`, 
           marks: [],
-          description: TREASURE_PENTACLES.description || ""
+          description: CARD_DESCRIPTIONS[TREASURE_PENTACLES.id] || TREASURE_PENTACLES.description || ""
       };
       modifyPlayer(ctx, ctx.sourcePlayerId, p => ({ ...p, hand: [...p.hand, treasure] }));
       ctx.log("【星币·节制】炼成！获得了【宝藏·星币】！");

@@ -2,6 +2,7 @@
 import { CardDefinition, CardSuit, Keyword } from '../../../types';
 import { modifyPlayer, isTreasureInVault } from '../../../services/actions';
 import { TREASURE_CUPS } from './treasure';
+import { CARD_DESCRIPTIONS } from '../../descriptions';
 
 export const CUPS_HIEROPHANT: CardDefinition = {
     id: 'cups-hierophant', name: '圣杯·教皇', suit: CardSuit.CUPS, rank: 105, 
@@ -16,7 +17,7 @@ export const CUPS_HIEROPHANT: CardDefinition = {
           ...TREASURE_CUPS, 
           instanceId: `treasure-cups-${Date.now()}`, 
           marks: [],
-          description: TREASURE_CUPS.description || "" 
+          description: CARD_DESCRIPTIONS[TREASURE_CUPS.id] || TREASURE_CUPS.description || "" 
       };
       ctx.log("【教皇】仪式完成，获得了【宝藏】圣杯！");
       modifyPlayer(ctx, ctx.sourcePlayerId, p => ({ ...p, hand: [...p.hand, treasure] }));
