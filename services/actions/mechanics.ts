@@ -183,7 +183,14 @@ export const transformCard = (ctx: EffectContext, targetPlayerId: number, cardIn
             description: newDef.description || ""
         };
 
-        ctx.log(`[变化] ${p.name} 的 [${targetCard.name}] 变成了 [${newCard.name}]！`);
+        // Formatting Log:
+        // Field cards are public. Hand cards are private in Online mode.
+        // If Online Mode and NOT Field, use {{}} to hide from opponent.
+        const isOnline = ctx.gameMode === 'ONLINE';
+        const sourceNameLog = isField ? `[${targetCard.name}]` : (isOnline ? `{{${targetCard.name}}}` : `[${targetCard.name}]`);
+        const newNameLog = isField ? `[${newCard.name}]` : (isOnline ? `{{${newCard.name}}}` : `[${newCard.name}]`);
+
+        ctx.log(`[变化] ${p.name} 的 ${sourceNameLog} 变成了 ${newNameLog}！`);
 
         // Check for Pentacles Fool Quest (Trigger for the source of the effect, usually ctx.sourcePlayerId)
         setTimeout(() => updateQuestProgress(ctx, ctx.sourcePlayerId, 'quest-pentacles-fool', 1), 50);
