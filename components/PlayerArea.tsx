@@ -22,7 +22,6 @@ interface PlayerAreaProps {
   onViewDeck?: () => void;
   onViewVault?: () => void;
   enableControls?: boolean; // New prop to explicitly control button visibility
-  isHandHidden?: boolean; // New prop to force render cards face down (for privacy)
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
@@ -40,8 +39,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     onViewDiscard, 
     onViewDeck, 
     onViewVault,
-    enableControls,
-    isHandHidden = false
+    enableControls // If undefined, we fallback to logic below
 }) => {
    // Default behavior: If it's an opponent (online/remote), disable controls. 
    // In local game, we will explicitly pass enableControls=true for both.
@@ -241,7 +239,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                         >
                             <CardComponent 
                                 card={card} 
-                                isFaceUp={!isHandHidden} 
+                                isFaceUp={true} 
                                 label={isOpponent ? "P2" : "P1"}
                                 isSelected={isSelectedCard}
                                 disabled={isResolving || !allowInteraction} 

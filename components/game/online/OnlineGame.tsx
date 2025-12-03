@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Peer, { DataConnection } from 'peerjs';
-import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition, InteractionRequest, CardSuit } from '../../../types';
+import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition, InteractionRequest } from '../../../types';
 import { NetworkMessage, NetworkRole, GameActionPayload } from '../../../types/network'; 
 import { generateDeck, shuffleDeck, sanitizeGameState, hydrateGameState } from '../../../services/gameUtils';
 import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress } from '../../../services/actions'; 
@@ -539,9 +539,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     if (!gameState) return;
     if (gameState?.isResolving || gameState?.phase === GamePhase.GAME_OVER) return;
 
-    // BLOCKING LOGIC: If interaction exists for opponent, block actions
-    if (gameState.interaction && gameState.interaction.playerId !== myId) return;
-
     // Discard Phase Logic (Explicit Action)
     if (gameState.phase === GamePhase.DISCARD) {
          if (card.isTreasure) {
@@ -577,9 +574,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   const handleInstantUse = (cardInstanceId: string) => {
-      // BLOCKING LOGIC
-      if (gameState?.interaction && gameState.interaction.playerId !== (role === 'HOST' ? 1 : 2)) return;
-
       if (role === 'HOST') {
           if (!gameState) return;
           handleInstantUseLogic(gameState.player1, cardInstanceId);
@@ -653,9 +647,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   const handleReadyClick = () => {
-      // BLOCKING LOGIC
-      if (gameState?.interaction && gameState.interaction.playerId !== (role === 'HOST' ? 1 : 2)) return;
-
       if (role === 'HOST') {
           handleToggleReady(1);
       } else {
@@ -685,11 +676,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
   const canInstantMy = mySelCard && mySelCard.canInstant?.(instantWindow) && !mySelCard.isLocked;
 
-  // BLOCKING CHECK: Is opponent interacting?
-  const isOpponentInteracting = interaction && interaction.playerId !== myId;
-
   const isActionDisabled = () => {
-      if (isOpponentInteracting) return true; // Block if opponent is busy
       if (phase === GamePhase.SET) return myPlayer.hand.length > 0 && (!mySelectionId || !canSetMy); // Must select valid card
       if (phase === GamePhase.DISCARD) return myPlayer.hand.filter(c=>!c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
       return false;
@@ -720,38 +707,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       };
   }
 
-  // --- Privacy Masking for Opponent Hand ---
-  // Create a masked copy of the opponent player state for rendering
-  const displayOpponent = useMemo(() => {
-      return {
-          ...oppPlayer,
-          hand: oppPlayer.hand.map(c => ({
-              ...c,
-              // Mask identifying info, but keep ID for React keys and marks for visibility
-              name: '???',
-              description: '',
-              suit: CardSuit.EMPTY, 
-              rank: 0,
-              keywords: [],
-              isTreasure: false 
-          }))
-      };
-  }, [oppPlayer]);
-
   const getActionButton = () => {
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     
-    // Check blocking state first
-    if (isOpponentInteracting) {
-        return (
-            <div className="flex flex-col items-center gap-2 w-full">
-                <button disabled className="w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md border-b-4 bg-stone-800 text-stone-500 border-stone-900 cursor-not-allowed">
-                    对手思考中...
-                </button>
-            </div>
-        );
-    }
-
     if (myReady && !oppReady) {
         return (
             <div className="flex flex-col items-center gap-2 w-full">
@@ -832,8 +790,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
              <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
              <span className="text-stone-400 font-serif">
-                {isOpponentInteracting ? '等待对手抉择...' :
-                 instantWindow === InstantWindow.NONE ? '等待中...' : 
+                {instantWindow === InstantWindow.NONE ? '等待中...' : 
                  instantWindow === InstantWindow.BEFORE_SET ? '置牌前时机' :
                  instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
                  instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
@@ -848,14 +805,13 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
           <div className="flex-grow flex flex-col relative overflow-hidden z-10">
             <PlayerArea 
-              player={displayOpponent} isOpponent phase={phase} 
+              player={oppPlayer} isOpponent phase={phase} 
               selectedCardId={null} mustDiscard={false}
               canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
               onSelect={(c) => handleCardClick(oppPlayer, c)} onInstant={(id) => {}}
               onViewDiscard={() => openPileView('DISCARD', myId === 1 ? 2 : 1)}
               onViewDeck={() => openPileView('DECK', myId === 1 ? 2 : 1)}
               onViewVault={() => openPileView('VAULT', myId === 1 ? 2 : 1)}
-              isHandHidden={true} // Privacy: Force opponent cards face down
             />
             
             <FieldArea gameState={gameState} player1={player1} player2={player2} />
