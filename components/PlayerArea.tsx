@@ -21,7 +21,8 @@ interface PlayerAreaProps {
   onViewDiscard?: () => void;
   onViewDeck?: () => void;
   onViewVault?: () => void;
-  enableControls?: boolean; // New prop to explicitly control button visibility
+  enableControls?: boolean;
+  hideHand?: boolean; // New prop to force hide hand (show card backs)
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
@@ -39,7 +40,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     onViewDiscard, 
     onViewDeck, 
     onViewVault,
-    enableControls // If undefined, we fallback to logic below
+    enableControls,
+    hideHand = false // Default to false (visible)
 }) => {
    // Default behavior: If it's an opponent (online/remote), disable controls. 
    // In local game, we will explicitly pass enableControls=true for both.
@@ -218,6 +220,10 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     
                     const tooltipSide = idx > middle ? 'left' : 'right';
                     
+                    // If hideHand is true, we force face down unless it's a treasure that was specifically revealed (usually treasures are public, but logic here assumes hand privacy overrides unless explicit)
+                    // Actually, treasures in hand are private until played.
+                    const shouldShowFace = !hideHand; 
+
                     const style: React.CSSProperties = {
                         transform: isHovered || isSelectedCard
                             ? `translateY(${isOpponent ? '6rem' : '-6rem'}) scale(1.15) rotate(0deg)` 
@@ -239,7 +245,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                         >
                             <CardComponent 
                                 card={card} 
-                                isFaceUp={true} 
+                                isFaceUp={shouldShowFace} 
                                 label={isOpponent ? "P2" : "P1"}
                                 isSelected={isSelectedCard}
                                 disabled={isResolving || !allowInteraction} 

@@ -549,6 +549,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
               onViewDeck={() => openPileView('DECK', 2)}
               onViewVault={() => openPileView('VAULT', 2)}
               enableControls={true} // Explicitly enable controls for P2 in Local Mode
+              hideHand={false} // Always show hands in Local Mode
             />
             
             <FieldArea gameState={gameState} player1={player1} player2={player2} />
@@ -562,6 +563,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
               onViewDeck={() => openPileView('DECK', 1)}
               onViewVault={() => openPileView('VAULT', 1)}
               enableControls={true} // Explicitly enable controls for P1 in Local Mode
+              hideHand={false} // Always show hands in Local Mode
             />
           </div>
 

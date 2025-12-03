@@ -710,6 +710,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const getActionButton = () => {
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     
+    // Check if opponent is interacting (Blocking Logic)
+    if (interaction && interaction.playerId !== myId) {
+        return <div className="text-amber-500 font-bold animate-pulse text-lg">对手正在抉择...</div>;
+    }
+
     if (myReady && !oppReady) {
         return (
             <div className="flex flex-col items-center gap-2 w-full">
@@ -812,6 +817,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               onViewDiscard={() => openPileView('DISCARD', myId === 1 ? 2 : 1)}
               onViewDeck={() => openPileView('DECK', myId === 1 ? 2 : 1)}
               onViewVault={() => openPileView('VAULT', myId === 1 ? 2 : 1)}
+              hideHand={true} // Hide opponent's hand in online mode
             />
             
             <FieldArea gameState={gameState} player1={player1} player2={player2} />
@@ -824,6 +830,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               onViewDiscard={() => openPileView('DISCARD', myId)}
               onViewDeck={() => openPileView('DECK', myId)}
               onViewVault={() => openPileView('VAULT', myId)}
+              hideHand={false} // Show my hand
             />
           </div>
 
