@@ -4,7 +4,6 @@ import { getTargetId } from './utils';
 import { updateQuestProgress } from './quests';
 import { damagePlayer } from './combat';
 import { shuffleDeck } from '../gameUtils';
-import { CARD_DEFINITIONS } from '../../data/cards';
 
 export const drawCards = (ctx: EffectContext, playerId: number, count: number, isPhaseDraw: boolean = false) => {
   const finalTargetId = getTargetId(ctx, playerId);
@@ -61,16 +60,18 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
         
         // Pentacles Fool Field Transform Logic
         if (pendingTransform && i === 0) {
-             const candidates = CARD_DEFINITIONS.filter(c => !c.isTreasure);
-             const newDef = candidates[Math.floor(Math.random() * candidates.length)];
-             const transformedCard: Card = {
-                 ...newDef,
-                 instanceId: card.instanceId,
-                 marks: card.marks,
-                 description: newDef.description || ""
-             };
-             ctx.log(`[变化] 抽到的 [${card.name}] 变成了 [${transformedCard.name}]！`);
-             card = transformedCard;
+             const candidates = ctx.allCards?.filter(c => !c.isTreasure) || [];
+             if (candidates.length > 0) {
+                 const newDef = candidates[Math.floor(Math.random() * candidates.length)];
+                 const transformedCard: Card = {
+                     ...newDef,
+                     instanceId: card.instanceId,
+                     marks: card.marks,
+                     description: newDef.description || ""
+                 };
+                 ctx.log(`[变化] 抽到的 [${card.name}] 变成了 [${transformedCard.name}]！`);
+                 card = transformedCard;
+             }
              pendingTransform = false; 
         }
 

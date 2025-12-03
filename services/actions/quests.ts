@@ -5,7 +5,6 @@ import { modifyPlayer } from './core';
 import { damagePlayer } from './combat';
 import { drawCards, shufflePlayerDeck } from './piles';
 import { transformCard } from './mechanics';
-import { CARD_DEFINITIONS } from '../../data/cards';
 
 export const addQuest = (ctx: EffectContext, playerId: number, quest: Quest) => {
     const finalTargetId = getTargetId(ctx, playerId);
@@ -33,7 +32,9 @@ export const addQuest = (ctx: EffectContext, playerId: number, quest: Quest) => 
 };
 
 export const giveCardReward = (ctx: EffectContext, playerId: number, identifier: string, isIdMatch: boolean = false) => {
-    const def = CARD_DEFINITIONS.find(c => isIdMatch ? c.id === identifier : c.name.includes(identifier));
+    // Break Cycle: Use context-injected allCards
+    const allCards = ctx.allCards || [];
+    const def = allCards.find(c => isIdMatch ? c.id === identifier : c.name.includes(identifier));
     
     if (def) {
         // Treasure Availability Check
@@ -48,7 +49,7 @@ export const giveCardReward = (ctx: EffectContext, playerId: number, identifier:
         ctx.log(`[获取] 获得了 [${def.name}]！`);
         ctx.setGameState((s:any) => s ? ({...s, interaction: null}) : null);
     } else {
-        console.warn(`Card reward not found: ${identifier}`);
+        console.warn(`Card reward not found: ${identifier}. Context Definitions: ${allCards.length}`);
         ctx.setGameState((s:any) => s ? ({...s, interaction: null}) : null);
     }
 };

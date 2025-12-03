@@ -175,7 +175,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           }
       } else {
           if (msg.type === 'GAME_STATE_SYNC') {
-              const syncedState = hydrateGameState(msg.payload);
+              const syncedState = hydrateGameState(msg.payload, CARD_DEFINITIONS);
               if (syncedState && !(syncedState as any).error) {
                   setGameState(syncedState);
               }
@@ -307,7 +307,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
        setGameState,
        log: addLog,
        isReversed: p?.isReversed,
-       gameMode: 'ONLINE' // Explicitly set mode
+       gameMode: 'ONLINE', // Explicitly set mode
+       allCards: CARD_DEFINITIONS // Pass definitions to avoid circular dependency in actions
      };
   };
 

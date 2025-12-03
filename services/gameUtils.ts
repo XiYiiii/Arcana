@@ -1,7 +1,6 @@
 
 import { Card, CardSuit, CardDefinition, PlayerState, GameState, FieldState } from '../types';
 import { INITIAL_DECK_SIZE } from '../constants';
-import { CARD_DEFINITIONS } from '../data/cards';
 
 export const compareCards = (a: Card | null, b: Card | null): number => {
   if (!a && !b) return 0;
@@ -15,7 +14,7 @@ export const compareCards = (a: Card | null, b: Card | null): number => {
   return rankA - rankB;
 };
 
-export const generateDeck = (playerId: number, allowedDefinitions: CardDefinition[] = CARD_DEFINITIONS): Card[] => {
+export const generateDeck = (playerId: number, allowedDefinitions: CardDefinition[]): Card[] => {
   const deck: Card[] = [];
   
   allowedDefinitions
@@ -75,8 +74,8 @@ export const sanitizeGameState = (state: GameState): any => {
 /**
  * Re-attaches static definitions (functions) to the sanitized card objects received from network.
  */
-const hydrateCard = (card: Card): Card => {
-  const def = CARD_DEFINITIONS.find(c => c.id === card.id);
+const hydrateCard = (card: Card, definitions: CardDefinition[]): Card => {
+  const def = definitions.find(c => c.id === card.id);
   if (!def) return card;
   // Merge the definition functions back into the instance data
   return {
@@ -85,45 +84,45 @@ const hydrateCard = (card: Card): Card => {
   };
 };
 
-const hydratePlayer = (player: PlayerState): PlayerState => {
+const hydratePlayer = (player: PlayerState, definitions: CardDefinition[]): PlayerState => {
   return {
     ...player,
-    deck: player.deck.map(hydrateCard),
-    hand: player.hand.map(hydrateCard),
-    discardPile: player.discardPile.map(hydrateCard),
-    fieldSlot: player.fieldSlot ? hydrateCard(player.fieldSlot) : null,
+    deck: player.deck.map(c => hydrateCard(c, definitions)),
+    hand: player.hand.map(c => hydrateCard(c, definitions)),
+    discardPile: player.discardPile.map(c => hydrateCard(c, definitions)),
+    fieldSlot: player.fieldSlot ? hydrateCard(player.fieldSlot, definitions) : null,
   };
 };
 
-const hydrateField = (field: FieldState): FieldState => {
+const hydrateField = (field: FieldState, definitions: CardDefinition[]): FieldState => {
     return {
         ...field,
-        card: hydrateCard(field.card)
+        card: hydrateCard(field.card, definitions)
     };
 };
 
-export const hydrateGameState = (state: any): GameState => {
+export const hydrateGameState = (state: any, definitions: CardDefinition[]): GameState => {
   if (!state || state.error) return state; // Handle error state
   
   return {
     ...state,
-    player1: hydratePlayer(state.player1),
-    player2: hydratePlayer(state.player2),
-    field: state.field ? hydrateField(state.field) : null,
+    player1: hydratePlayer(state.player1, definitions),
+    player2: hydratePlayer(state.player2, definitions),
+    field: state.field ? hydrateField(state.field, definitions) : null,
     // Note: PendingEffect also contains a 'card' property that needs hydration
     pendingEffects: state.pendingEffects?.map((pe: any) => ({
         ...pe,
-        card: hydrateCard(pe.card)
+        card: hydrateCard(pe.card, definitions)
     })) || [],
-    activeEffect: state.activeEffect ? { ...state.activeEffect, card: hydrateCard(state.activeEffect.card) } : null,
+    activeEffect: state.activeEffect ? { ...state.activeEffect, card: hydrateCard(state.activeEffect.card, definitions) } : null,
     // Interaction might contain cards too
     interaction: state.interaction ? {
         ...state.interaction,
         options: state.interaction.options?.map((opt: any) => ({
             ...opt,
-            hoverCard: opt.hoverCard ? hydrateCard(opt.hoverCard) : undefined
+            hoverCard: opt.hoverCard ? hydrateCard(opt.hoverCard, definitions) : undefined
         })),
-        cardsToSelect: state.interaction.cardsToSelect?.map(hydrateCard)
+        cardsToSelect: state.interaction.cardsToSelect?.map((c: any) => hydrateCard(c, definitions))
     } : null
   };
 };

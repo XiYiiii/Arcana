@@ -12,6 +12,7 @@ export type EffectContext = {
   log: (msg: string) => void;
   isReversed?: boolean; // If true, targets should be swapped
   gameMode?: 'LOCAL' | 'ONLINE'; // To control log privacy
+  allCards?: CardDefinition[]; // Inject definitions to avoid circular imports
 };
 
 export interface CardDefinition {
