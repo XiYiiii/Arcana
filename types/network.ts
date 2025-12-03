@@ -21,4 +21,5 @@ export interface GameActionPayload {
   cardId?: string | null; // Allow null for deselection
   value?: number;
   interactionId?: string;
+  optionIndex?: number; // Added to support selection from options list
 }

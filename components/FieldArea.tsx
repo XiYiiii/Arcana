@@ -36,19 +36,28 @@ export const FieldArea: React.FC<FieldAreaProps> = ({ gameState, player1, player
                     : '场地空置'}
              </span>
              <div className={`
-                relative w-36 h-48 border-2 rounded-lg flex items-center justify-center transition-all duration-500
+                relative w-36 h-48 border-2 rounded-lg flex items-center justify-center transition-all duration-500 overflow-hidden
                 ${gameState.field 
                     ? (isActive ? 'border-emerald-500/80 shadow-[0_0_40px_rgba(16,185,129,0.2)] bg-emerald-900/10' : 'border-stone-600/50 opacity-80 grayscale-[0.8]') 
                     : 'border-dashed border-emerald-900/30 bg-black/20'}
              `}>
                 {gameState.field ? (
-                    <div className="transform scale-90">
-                        <CardComponent card={gameState.field.card} isFaceUp={true} disabled />
-                        <div className={`absolute -top-2 -right-2 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow transition-colors ${isActive ? 'bg-emerald-700' : 'bg-stone-700'}`}>
+                    // Card standard size is w-48 (192px) x h-[216px] (216px).
+                    // Slot size is w-36 (144px) x h-48 (192px).
+                    // Scale X needed: 144 / 192 = 0.75.
+                    // Scale Y needed: 192 / 216 = ~0.88.
+                    // Using scale-75 (0.75) keeps aspect ratio. 
+                    // Height becomes 216 * 0.75 = 162px. Fits within 192px with vertical padding.
+                    // Flex center ensures it stays in middle.
+                    <div className="w-full h-full flex items-center justify-center">
+                        <div className="transform scale-75 origin-center">
+                            <CardComponent card={gameState.field.card} isFaceUp={true} disabled />
+                        </div>
+                        <div className={`absolute -top-1 -right-1 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow transition-colors z-20 scale-90 ${isActive ? 'bg-emerald-700' : 'bg-stone-700'}`}>
                            P{gameState.field.ownerId}
                         </div>
                         {gameState.field.counter > 0 && (
-                             <div className="absolute -bottom-2 -right-2 bg-amber-700 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow">
+                             <div className="absolute -bottom-1 -right-1 bg-amber-700 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow z-20 scale-90">
                                Cnt: {gameState.field.counter}
                              </div>
                         )}

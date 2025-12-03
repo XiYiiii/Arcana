@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Peer, { DataConnection } from 'peerjs';
-import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
+import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition, InteractionRequest } from '../../../types';
 import { NetworkMessage, NetworkRole, GameActionPayload } from '../../../types/network'; 
 import { generateDeck, shuffleDeck, sanitizeGameState, hydrateGameState } from '../../../services/gameUtils';
 import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress } from '../../../services/actions'; 
@@ -397,7 +397,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
      
      const effect = gameStateRef.current.activeEffect;
      
-     // 1. Execute Logic (Important: This was missing previously!)
+     // 1. Execute Logic
      if (effect.type === 'ON_DRAW' && effect.card.onDraw) {
         effect.card.onDraw(createEffectContext(effect.playerId, effect.card));
      } else if (effect.type === 'ON_DISCARD' && effect.card.onDiscard) {
@@ -465,6 +465,37 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       else if (action.actionType === 'DISMISS_EFFECT') {
           dismissActiveEffectHost();
       }
+      else if (action.actionType === 'CONFIRM_INTERACTION') {
+          const interaction = gs.interaction;
+          // Ensure the interaction exists and belongs to the requesting player
+          if (interaction && interaction.playerId === playerId) {
+              // 1. Button/Option Selection
+              if (action.optionIndex !== undefined && interaction.options && interaction.options[action.optionIndex]) {
+                  interaction.options[action.optionIndex].action();
+              }
+              // 2. Number Input
+              else if (action.value !== undefined && interaction.onConfirm) {
+                  interaction.onConfirm(action.value);
+              }
+              // 3. Card Selection
+              else if (action.cardId && interaction.onCardSelect) {
+                  // Find the card object (usually from hand or deck/pile as defined by context)
+                  // For simplicity, we search in likely places: Hand, Field, Deck, Discard
+                  const findCard = (cid: string) => {
+                      const p = playerId === 1 ? gs.player1 : gs.player2;
+                      const opp = playerId === 1 ? gs.player2 : gs.player1;
+                      const all = [...p.hand, ...p.deck, ...p.discardPile, ...(p.fieldSlot?[p.fieldSlot]:[]), 
+                                   ...opp.hand, ...opp.deck, ...opp.discardPile, ...(opp.fieldSlot?[opp.fieldSlot]:[])];
+                      return all.find(c => c.instanceId === cid);
+                  }
+                  
+                  const targetCard = findCard(action.cardId);
+                  if (targetCard) {
+                      interaction.onCardSelect(targetCard);
+                  }
+              }
+          }
+      }
   };
 
   // Keep the ref updated with the latest function closure
@@ -482,7 +513,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     // Discard Phase Logic (Explicit Action)
     if (gameState.phase === GamePhase.DISCARD) {
          if (card.isTreasure) {
-             // Just Log locally if I am host, or do nothing if client (Host logs will sync)
              if(role === 'HOST') addLog(`[规则] 宝藏牌无法被弃置！`);
              return;
          }
@@ -496,7 +526,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
                  sendNetworkMessage('PLAYER_ACTION', { actionType: 'DISCARD_CARD', cardId: card.instanceId });
              }
          }
-         return; // Stop here, do not select
+         return; 
     }
 
     // Standard Selection Logic (Set/Instant)
@@ -607,7 +637,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   const myReady = playerReadyState[myId];
   const oppReady = playerReadyState[myId === 1 ? 2 : 1];
 
-  // Helper to determine button state
   const isActionDisabled = () => {
       if (phase === GamePhase.SET) return myPlayer.hand.length > 0 && !mySelectionId;
       if (phase === GamePhase.DISCARD) return myPlayer.hand.filter(c=>!c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
@@ -617,10 +646,31 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   // Only show interaction overlay if it is FOR ME
   const showInteraction = interaction && interaction.playerId === myId;
 
+  // --- Render Proxy Interaction for Client ---
+  let renderedInteraction = interaction;
+  
+  if (role === 'CLIENT' && interaction) {
+      // Reconstruct action handlers that send network messages
+      renderedInteraction = {
+          ...interaction,
+          onConfirm: (val: number) => {
+              sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', value: val });
+          },
+          onCardSelect: (card: Card) => {
+              sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', cardId: card.instanceId });
+          },
+          options: interaction.options?.map((opt, idx) => ({
+              ...opt,
+              action: () => {
+                  sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', optionIndex: idx });
+              }
+          }))
+      };
+  }
+
   const getActionButton = () => {
     if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     
-    // Waiting for opponent
     if (myReady && !oppReady) {
         return (
             <div className="flex flex-col items-center gap-2 w-full">
@@ -632,7 +682,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
         );
     }
 
-    // Both Ready / Processing
     if (isResolving || (myReady && oppReady)) {
         return <div className="text-emerald-500 font-bold animate-pulse text-lg">处理中...</div>;
     }
@@ -685,7 +734,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
 
       {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
       {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={handleDismissEffect} />}
-      {showInteraction && <InteractionOverlay request={interaction!} />}
+      {showInteraction && <InteractionOverlay request={renderedInteraction!} />}
 
       <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
       

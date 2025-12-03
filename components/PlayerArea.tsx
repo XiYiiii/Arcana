@@ -21,95 +21,157 @@ interface PlayerAreaProps {
   onViewDiscard?: () => void;
   onViewDeck?: () => void;
   onViewVault?: () => void;
+  enableControls?: boolean; // New prop to explicitly control button visibility
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
-    player, isOpponent, phase, selectedCardId, mustDiscard, canSet, canInstant, isResolving, instantWindow, onSelect, onInstant, onViewDiscard, onViewDeck, onViewVault
+    player, 
+    isOpponent, 
+    phase, 
+    selectedCardId, 
+    mustDiscard, 
+    canSet, 
+    canInstant, 
+    isResolving, 
+    instantWindow, 
+    onSelect, 
+    onInstant, 
+    onViewDiscard, 
+    onViewDeck, 
+    onViewVault,
+    enableControls // If undefined, we fallback to logic below
 }) => {
+   // Default behavior: If it's an opponent (online/remote), disable controls. 
+   // In local game, we will explicitly pass enableControls=true for both.
+   const showActions = enableControls !== undefined ? enableControls : !isOpponent;
+
    const isDiscardPhase = phase === GamePhase.DISCARD;
    const allowInteraction = phase === GamePhase.SET || instantWindow !== InstantWindow.NONE || (phase === GamePhase.DISCARD && mustDiscard);
    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
    const [hoveredQuestId, setHoveredQuestId] = useState<string | null>(null);
 
+   // Button Validity Logic - Use showActions instead of !isOpponent
+   const isSetButtonActive = showActions && phase === GamePhase.SET && selectedCardId && canSet;
+   const isInstantButtonActive = showActions && selectedCardId && canInstant;
+
    return (
       <div className={`flex-1 flex flex-col w-full ${isOpponent ? 'pt-4' : 'pb-6'} relative transition-all duration-500 z-30`}>
          
-         {/* Player Info Panel - Increased Z-Index to 60 to sit ABOVE cards (which go up to 50) */}
-         <div className={`absolute ${isOpponent ? 'top-4' : 'bottom-8'} left-1/2 -translate-x-1/2 z-[60] flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-stone-950/90 px-6 py-2 rounded-full border border-stone-700 backdrop-blur-md shadow-2xl pointer-events-none`}>
-             {/* Avatar / Name */}
-             <div className="flex items-center gap-2">
-                 <div className={`w-8 h-8 rounded border ${isOpponent ? 'border-stone-600 bg-stone-800' : 'border-stone-500 bg-stone-800'} flex items-center justify-center shadow-lg`}>
-                     <span className="text-sm grayscale opacity-70">{isOpponent ? '👤' : '🧙‍♂️'}</span>
-                 </div>
-                 <div className="flex flex-col">
-                     <span className={`font-serif font-bold text-sm leading-none ${isOpponent ? 'text-stone-400' : 'text-stone-300'} drop-shadow-md`}>
-                         {player.name}
-                     </span>
-                 </div>
-             </div>
+         {/* Player Info Panel & Action Buttons - Increased Z-Index to 60 */}
+         <div className={`absolute ${isOpponent ? 'top-4' : 'bottom-8'} left-1/2 -translate-x-1/2 z-[60] flex items-center gap-4`}>
              
-             {/* Divider */}
-             <div className="w-px h-6 bg-stone-700/50"></div>
+             {/* Action Buttons - Visible if showActions is true */}
+             {showActions && (
+                <div className="flex flex-row items-center mr-4 animate-in fade-in slide-in-from-right-4 gap-3">
+                    {/* Set Card Indicator/Button */}
+                    <button 
+                        onClick={isSetButtonActive ? () => {} : undefined} // Button is mostly visual indicator for Set, actual trigger handles in parent or auto, but let's keep consistent style
+                        disabled={!isSetButtonActive}
+                        className={`
+                            px-4 py-2 rounded-lg text-[10px] font-bold border transition-all duration-300 shadow-md select-none flex items-center justify-center whitespace-nowrap min-w-[80px]
+                            ${isSetButtonActive 
+                                ? 'bg-emerald-700 text-emerald-100 border-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.5)] scale-105 cursor-default' 
+                                : 'bg-stone-900/60 text-stone-600 border-stone-800 opacity-50 grayscale'
+                            }
+                        `}
+                    >
+                        {isSetButtonActive ? '▼ 确认盖牌' : '盖牌'}
+                    </button>
 
-             {/* Stats Row */}
-             <div className="flex gap-3">
-                <div className="flex items-center gap-1.5">
-                    <span className="text-xs">❤️</span>
-                    <span className={`font-serif font-bold ${player.hp <= 5 ? 'text-red-400' : 'text-emerald-400'}`}>{player.hp}</span>
+                    {/* Instant Use Button */}
+                    <button 
+                        onClick={() => selectedCardId && onInstant(selectedCardId)} 
+                        disabled={!isInstantButtonActive}
+                        className={`
+                            px-4 py-2 rounded-lg text-[10px] font-bold border transition-all duration-300 shadow-md whitespace-nowrap min-w-[80px] flex items-center justify-center gap-1
+                            ${isInstantButtonActive 
+                                ? 'bg-purple-800 hover:bg-purple-700 text-purple-100 border-purple-600 shadow-[0_0_15px_rgba(147,51,234,0.5)] hover:scale-105 cursor-pointer pointer-events-auto' 
+                                : 'bg-stone-900/60 text-stone-600 border-stone-800 opacity-50 grayscale cursor-not-allowed'
+                            }
+                        `}
+                    >
+                        <span>✨</span> 插入
+                    </button>
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <span className="text-xs">⚔️</span>
-                    <span className="font-serif font-bold text-blue-400">{player.atk}</span>
-                </div>
-             </div>
-
-             {/* Status Effects */}
-             <div className="flex gap-1">
-               {player.immunityNextTurn && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="下回免疫"></span>}
-               {player.immunityThisTurn && <span className="w-2 h-2 rounded-full bg-amber-600 border border-amber-400 shadow-glow" title="免疫中"></span>}
-               {player.isReversed && <span className="w-2 h-2 rounded-full bg-purple-500" title="被反转"></span>}
-               {player.isInvalidated && <span className="w-2 h-2 rounded-full bg-stone-500" title="被无效"></span>}
-               {mustDiscard && isDiscardPhase && <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" title="需弃牌"></span>}
-             </div>
-
-             {/* Quests */}
-             {player.quests.length > 0 && (
-                 <>
-                     <div className="w-px h-6 bg-stone-700/50 mx-1"></div>
-                     <div className="flex gap-2 pointer-events-auto">
-                         {player.quests.map(q => (
-                             <div 
-                                key={q.id} 
-                                className="flex flex-col items-center bg-stone-900 px-2 py-1 rounded border border-yellow-600 shadow-md relative group cursor-help transition-transform hover:scale-110"
-                                onMouseEnter={() => setHoveredQuestId(q.id)}
-                                onMouseLeave={() => setHoveredQuestId(null)}
-                             >
-                                 <span className="text-[9px] text-yellow-500 font-black leading-none mb-1 max-w-[60px] truncate">{q.name}</span>
-                                 <div className="w-full h-1.5 bg-stone-800 rounded-full overflow-hidden border border-stone-700">
-                                     <div className="h-full bg-gradient-to-r from-yellow-700 to-yellow-400 transition-all duration-500" style={{ width: `${Math.min(100, (q.progress / q.target) * 100)}%` }}></div>
-                                 </div>
-                                 
-                                 {/* Quest Tooltip */}
-                                 {hoveredQuestId === q.id && (
-                                     <div className={`absolute left-1/2 -translate-x-1/2 ${isOpponent ? 'top-full mt-3' : 'bottom-full mb-3'} w-48 bg-stone-950/95 p-3 rounded-lg border border-yellow-600/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] z-[100] text-left pointer-events-none backdrop-blur-xl`}>
-                                         <div className="text-[11px] font-bold text-yellow-500 mb-1 flex justify-between items-center">
-                                             <span>{q.name}</span>
-                                             <span className="text-[9px] bg-stone-800 px-1.5 rounded text-yellow-200/70">{Math.round((q.progress / q.target) * 100)}%</span>
-                                         </div>
-                                         <div className="text-[10px] text-stone-300 mb-2 leading-tight border-b border-stone-800 pb-2">{q.description}</div>
-                                         <div className="text-[9px] text-stone-500 font-mono flex justify-between">
-                                             <span>当前: {q.progress}</span>
-                                             <span>目标: {q.target}</span>
-                                         </div>
-                                         {/* Arrow */}
-                                         <div className={`absolute left-1/2 -translate-x-1/2 w-0 h-0 border-8 border-transparent ${isOpponent ? 'bottom-full border-b-stone-950/95 -mb-[1px]' : 'top-full border-t-stone-950/95 -mt-[1px]'}`}></div>
-                                     </div>
-                                 )}
-                             </div>
-                         ))}
-                     </div>
-                 </>
              )}
+
+             {/* Status Bar */}
+             <div className="flex items-center gap-4 bg-stone-950/90 px-6 py-2 rounded-full border border-stone-700 backdrop-blur-md shadow-2xl pointer-events-none">
+                 {/* Avatar / Name */}
+                 <div className="flex items-center gap-2">
+                     <div className={`w-8 h-8 rounded border ${isOpponent ? 'border-stone-600 bg-stone-800' : 'border-stone-500 bg-stone-800'} flex items-center justify-center shadow-lg`}>
+                         <span className="text-sm grayscale opacity-70">{isOpponent ? '👤' : '🧙‍♂️'}</span>
+                     </div>
+                     <div className="flex flex-col">
+                         <span className={`font-serif font-bold text-sm leading-none ${isOpponent ? 'text-stone-400' : 'text-stone-300'} drop-shadow-md`}>
+                             {player.name}
+                         </span>
+                     </div>
+                 </div>
+                 
+                 {/* Divider */}
+                 <div className="w-px h-6 bg-stone-700/50"></div>
+
+                 {/* Stats Row */}
+                 <div className="flex gap-3">
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-xs">❤️</span>
+                        <span className={`font-serif font-bold ${player.hp <= 5 ? 'text-red-400' : 'text-emerald-400'}`}>{player.hp}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-xs">⚔️</span>
+                        <span className="font-serif font-bold text-blue-400">{player.atk}</span>
+                    </div>
+                 </div>
+
+                 {/* Status Effects */}
+                 <div className="flex gap-1">
+                   {player.immunityNextTurn && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="下回免疫"></span>}
+                   {player.immunityThisTurn && <span className="w-2 h-2 rounded-full bg-amber-600 border border-amber-400 shadow-glow" title="免疫中"></span>}
+                   {player.isReversed && <span className="w-2 h-2 rounded-full bg-purple-500" title="被反转"></span>}
+                   {player.isInvalidated && <span className="w-2 h-2 rounded-full bg-stone-500" title="被无效"></span>}
+                   {mustDiscard && isDiscardPhase && <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" title="需弃牌"></span>}
+                 </div>
+
+                 {/* Quests */}
+                 {player.quests.length > 0 && (
+                     <>
+                         <div className="w-px h-6 bg-stone-700/50 mx-1"></div>
+                         <div className="flex gap-2 pointer-events-auto">
+                             {player.quests.map(q => (
+                                 <div 
+                                    key={q.id} 
+                                    className="flex flex-col items-center bg-stone-900 px-2 py-1 rounded border border-yellow-600 shadow-md relative group cursor-help transition-transform hover:scale-110"
+                                    onMouseEnter={() => setHoveredQuestId(q.id)}
+                                    onMouseLeave={() => setHoveredQuestId(null)}
+                                 >
+                                     <span className="text-[9px] text-yellow-500 font-black leading-none mb-1 max-w-[60px] truncate">{q.name}</span>
+                                     <div className="w-full h-1.5 bg-stone-800 rounded-full overflow-hidden border border-stone-700">
+                                         <div className="h-full bg-gradient-to-r from-yellow-700 to-yellow-400 transition-all duration-500" style={{ width: `${Math.min(100, (q.progress / q.target) * 100)}%` }}></div>
+                                     </div>
+                                     
+                                     {/* Quest Tooltip */}
+                                     {hoveredQuestId === q.id && (
+                                         <div className={`absolute left-1/2 -translate-x-1/2 ${isOpponent ? 'top-full mt-3' : 'bottom-full mb-3'} w-48 bg-stone-950/95 p-3 rounded-lg border border-yellow-600/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] z-[100] text-left pointer-events-none backdrop-blur-xl`}>
+                                             <div className="text-[11px] font-bold text-yellow-500 mb-1 flex justify-between items-center">
+                                                 <span>{q.name}</span>
+                                                 <span className="text-[9px] bg-stone-800 px-1.5 rounded text-yellow-200/70">{Math.round((q.progress / q.target) * 100)}%</span>
+                                             </div>
+                                             <div className="text-[10px] text-stone-300 mb-2 leading-tight border-b border-stone-800 pb-2">{q.description}</div>
+                                             <div className="text-[9px] text-stone-500 font-mono flex justify-between">
+                                                 <span>当前: {q.progress}</span>
+                                                 <span>目标: {q.target}</span>
+                                             </div>
+                                             {/* Arrow */}
+                                             <div className={`absolute left-1/2 -translate-x-1/2 w-0 h-0 border-8 border-transparent ${isOpponent ? 'bottom-full border-b-stone-950/95 -mb-[1px]' : 'top-full border-t-stone-950/95 -mt-[1px]'}`}></div>
+                                         </div>
+                                     )}
+                                 </div>
+                             ))}
+                         </div>
+                     </>
+                 )}
+             </div>
          </div>
 
          {/* Main Playing Area Row: Piles + Hand */}
@@ -131,22 +193,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
 
             {/* Center Hand Area */}
             <div className={`relative flex-1 flex justify-center ${isOpponent ? 'mt-[-40px]' : 'mb-16'}`}>
-                 {/* Action Buttons Overlay */}
-                {selectedCardId && (instantWindow !== InstantWindow.NONE || phase === GamePhase.SET) && (
-                <div className={`absolute ${isOpponent ? 'bottom-[-60px]' : 'top-[-80px]'} z-50 flex flex-col items-center animate-bounce pointer-events-none w-full`}>
-                    {phase === GamePhase.SET && (
-                        canSet 
-                        ? <div className="bg-emerald-700 text-emerald-100 text-[10px] font-bold px-3 py-1 rounded-full shadow-lg mb-1 border border-emerald-600">▼ 确认盖牌</div> 
-                        : <div className="bg-red-800 text-red-200 text-[10px] font-bold px-3 py-1 rounded-full shadow-lg mb-1 border border-red-700">🚫 无法盖置</div>
-                    )}
-                    {canInstant && (
-                        <button onClick={() => onInstant(selectedCardId)} className="bg-purple-800 hover:bg-purple-700 text-purple-100 px-3 py-1 rounded-full text-[10px] font-bold shadow-[0_0_10px_rgba(147,51,234,0.3)] border border-purple-600 transition-all hover:scale-105 pointer-events-auto">
-                            ✨ 使用插入
-                        </button>
-                    )}
-                </div>
-                )}
-
                 {/* Card Container - Fan Layout */}
                 <div className={`
                     relative flex justify-center items-end h-[220px] w-full max-w-3xl
