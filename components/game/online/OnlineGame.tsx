@@ -313,10 +313,29 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           advancePhase(gameState);
           
           // Release lock after a safety delay (state update is async)
-          // The advancePhase sets isResolving=true immediately, which invalidates this check anyway.
           setTimeout(() => { phaseLockRef.current = false; }, 500);
       }
   }, [gameState?.playerReadyState, gameState?.isResolving]);
+
+  // --- Effect Queue Processor (HOST ONLY) ---
+  // Triggers when pendingEffects has items. Pops the first one and makes it active.
+  useEffect(() => {
+    if (roleRef.current !== 'HOST' || !gameState) return;
+    // Don't pop if already showing something
+    if (gameState.activeEffect || gameState.interaction) return;
+    // Don't pop if empty
+    if (gameState.pendingEffects.length === 0) return;
+
+    const effect = gameState.pendingEffects[0];
+    setGameState(prev => {
+       if (!prev) return null;
+       return {
+          ...prev,
+          pendingEffects: prev.pendingEffects.slice(1),
+          activeEffect: effect
+       };
+    });
+  }, [gameState?.pendingEffects, gameState?.activeEffect, gameState?.interaction]);
 
   const advancePhase = (currentState: GameState) => {
       console.log("[HOST] Advancing Phase logic triggered.");
@@ -373,14 +392,34 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   };
 
   // --- Active Effect Logic ---
-  const dismissActiveEffect = () => {
-     if (role === 'HOST' && gameState?.activeEffect) {
-         setGameState(prev => prev ? ({ ...prev, activeEffect: null }) : null);
-         if (activeEffectResolverRef.current) {
-             activeEffectResolverRef.current();
-             activeEffectResolverRef.current = null;
-         }
+  const dismissActiveEffectHost = () => {
+     if (roleRef.current !== 'HOST' || !gameStateRef.current?.activeEffect) return;
+     
+     const effect = gameStateRef.current.activeEffect;
+     
+     // 1. Execute Logic (Important: This was missing previously!)
+     if (effect.type === 'ON_DRAW' && effect.card.onDraw) {
+        effect.card.onDraw(createEffectContext(effect.playerId, effect.card));
+     } else if (effect.type === 'ON_DISCARD' && effect.card.onDiscard) {
+        effect.card.onDiscard(createEffectContext(effect.playerId, effect.card));
      }
+
+     // 2. Clear Effect State
+     setGameState(prev => prev ? ({ ...prev, activeEffect: null }) : null);
+     
+     // 3. Resolve visual promise if any (for non-queue effects)
+     if (activeEffectResolverRef.current) {
+         activeEffectResolverRef.current();
+         activeEffectResolverRef.current = null;
+     }
+  };
+
+  const handleDismissEffect = () => {
+      if (role === 'HOST') {
+          dismissActiveEffectHost();
+      } else {
+          sendNetworkMessage('PLAYER_ACTION', { actionType: 'DISMISS_EFFECT' });
+      }
   };
 
   const triggerVisualEffect = async (type: PendingEffect['type'], card: Card, pid: number, desc?: string) => {
@@ -422,6 +461,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       }
       else if (action.actionType === 'TOGGLE_READY') {
           handleToggleReady(playerId);
+      }
+      else if (action.actionType === 'DISMISS_EFFECT') {
+          dismissActiveEffectHost();
       }
   };
 
@@ -614,15 +656,32 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
              <span className="text-stone-400 font-bold">{role === 'HOST' ? '主机' : '客机'}</span>
          </div>
          <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出</button>
-         <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className="text-[10px] bg-stone-900/60 text-blue-400 px-3 py-2 rounded border border-blue-900/30 backdrop-blur">网络</button>
+         <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur">网络调试</button>
       </div>
 
-      {showNetworkDebug && <NetworkDebugOverlay logs={networkLogs} role={role} onSimulateReceive={()=>{}} onClearLogs={()=>setNetworkLogs([])} onClose={()=>setShowNetworkDebug(false)} />}
+      {showNetworkDebug && (
+          <NetworkDebugOverlay 
+              logs={networkLogs} 
+              role={role} 
+              onSimulateReceive={() => {}} 
+              onClearLogs={() => setNetworkLogs([])} 
+              onClose={() => setShowNetworkDebug(false)}
+          />
+      )}
+
       {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
-      {viewingPile && <CardPileOverlay title={viewingPile.title} cards={viewingPile.cards} onClose={() => setViewingPile(null)} sorted={viewingPile.sorted} />}
+      
+      {viewingPile && (
+          <CardPileOverlay 
+              title={viewingPile.title} 
+              cards={viewingPile.cards} 
+              onClose={() => setViewingPile(null)} 
+              sorted={viewingPile.sorted}
+          />
+      )}
 
       {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
-      {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
+      {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={handleDismissEffect} />}
       {interaction && <InteractionOverlay request={interaction} />}
 
       <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
@@ -635,44 +694,35 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
              instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
              instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
          </span>
-         <span className="ml-4 text-xs font-bold text-indigo-400">
-             [我方: {myReady ? '✅' : '⏳'}] [对方: {oppReady ? '✅' : '⏳'}]
-         </span>
+         {gameState.field && (
+             <span className="ml-4 text-emerald-500 font-serif font-bold">
+                 🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
+             </span>
+         )}
+         <span className="ml-4 text-xs font-bold text-stone-600">[联机模式 - {role === 'HOST' ? '主机' : '客户端'}]</span>
       </div>
-
-      {isResolving && !activeEffect && !interaction && (
-         <div className="absolute inset-0 z-[45] flex items-center justify-center pointer-events-none">
-            <div className="bg-black/70 text-amber-500 px-8 py-4 rounded-xl text-lg font-serif font-bold shadow-2xl backdrop-blur-md border border-amber-900/30 animate-pulse">
-               同步处理中...
-            </div>
-         </div>
-      )}
 
       <div className="flex-grow flex flex-col relative overflow-hidden z-10">
         <PlayerArea 
           player={oppPlayer} isOpponent phase={phase} 
-          selectedCardId={null} mustDiscard={false} 
+          selectedCardId={null} mustDiscard={false}
           canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => {}} onInstant={(id) => {}}
-          onViewDiscard={() => openPileView('DISCARD', oppPlayer.id)}
-          onViewDeck={() => {}} 
-          onViewVault={() => openPileView('VAULT', oppPlayer.id)}
+          onSelect={(c) => handleCardClick(oppPlayer, c)} onInstant={(id) => {}}
+          onViewDiscard={() => openPileView('DISCARD', myId === 1 ? 2 : 1)}
+          onViewDeck={() => openPileView('DECK', myId === 1 ? 2 : 1)}
+          onViewVault={() => openPileView('VAULT', myId === 1 ? 2 : 1)}
         />
         
         <FieldArea gameState={gameState} player1={player1} player2={player2} />
 
         <PlayerArea 
           player={myPlayer} phase={phase} 
-          selectedCardId={mySelectionId} 
-          mustDiscard={!isActionDisabled() && phase === GamePhase.DISCARD && myPlayer.hand.filter(c=>!c.isTreasure).length > myPlayer.maxHandSize}
-          canSet={phase === GamePhase.SET} 
-          canInstant={instantWindow !== InstantWindow.NONE} 
-          isResolving={isResolving} instantWindow={instantWindow}
-          onSelect={(c) => handleCardClick(myPlayer, c)} 
-          onInstant={(id) => handleInstantUse(id)}
-          onViewDiscard={() => openPileView('DISCARD', myPlayer.id)}
-          onViewDeck={() => openPileView('DECK', myPlayer.id)}
-          onViewVault={() => openPileView('VAULT', myPlayer.id)}
+          selectedCardId={mySelectionId} mustDiscard={role==='HOST' ? (player1.hand.length > MAX_HAND_SIZE && !player1.skipDiscardThisTurn) : (player2.hand.length > MAX_HAND_SIZE && !player2.skipDiscardThisTurn)}
+          canSet={true} canInstant={true} isResolving={isResolving} instantWindow={instantWindow}
+          onSelect={(c) => handleCardClick(myPlayer, c)} onInstant={(id) => handleInstantUse(id)}
+          onViewDiscard={() => openPileView('DISCARD', myId)}
+          onViewDeck={() => openPileView('DECK', myId)}
+          onViewVault={() => openPileView('VAULT', myId)}
         />
       </div>
 
@@ -691,4 +741,4 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       </div>
     </div>
   );
-}
+};
