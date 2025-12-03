@@ -137,6 +137,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       }
 
       const safePayload = type === 'GAME_STATE_SYNC' ? sanitizeGameState(payload) : payload;
+      
+      // If sanitization failed (it returns error object), don't send to avoid connection close/crash
+      if (type === 'GAME_STATE_SYNC' && safePayload && (safePayload as any).error) {
+          console.error("Aborted sending Game State Sync due to sanitization error.");
+          return;
+      }
 
       const msg: NetworkMessage = {
           id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -150,7 +156,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           addNetworkLog(msg);
           connRef.current.send(msg);
       } catch (e) {
-          console.error("Send Error:", e);
+          console.error("Network Send Error:", e);
       }
   };
 
@@ -170,7 +176,9 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       } else {
           if (msg.type === 'GAME_STATE_SYNC') {
               const syncedState = hydrateGameState(msg.payload);
-              setGameState(syncedState);
+              if (syncedState && !(syncedState as any).error) {
+                  setGameState(syncedState);
+              }
           }
       }
   }, []);
@@ -229,8 +237,11 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           setNetworkError(null);
           
           if (roleRef.current === 'HOST') {
-              const newState = initializeGame();
-              setGameState(newState);
+              // Defer state initialization slightly to ensure connection is stable and React has rendered
+              setTimeout(() => {
+                  const newState = initializeGame();
+                  setGameState(newState);
+              }, 100);
           }
       });
 
@@ -256,6 +267,13 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
   useEffect(() => {
       if (role === 'HOST' && connState === 'CONNECTED' && gameState) {
           const safePayload = sanitizeGameState(gameState);
+          
+          // Safety check: if sanitization failed, do not send bad data
+          if (safePayload && (safePayload as any).error) {
+              console.error("Skipping sync due to sanitize error");
+              return;
+          }
+
           const msg: NetworkMessage = {
               id: `sync-${Date.now()}`,
               sender: 'HOST',
@@ -263,11 +281,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               payload: safePayload,
               timestamp: Date.now()
           };
+          
           if (connRef.current?.open) {
               try {
                   connRef.current.send(msg);
               } catch(e) {
-                  console.error("Sync Failed:", e);
+                  console.error("Sync Send Failed:", e);
               }
           }
       }

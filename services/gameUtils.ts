@@ -61,10 +61,14 @@ export const getArcanaNumber = (card: Card): number => {
  */
 export const sanitizeGameState = (state: GameState): any => {
   try {
+    // This strips functions and undefined values
     return JSON.parse(JSON.stringify(state));
   } catch (e) {
     console.error("Failed to sanitize game state", e);
-    return state;
+    // CRITICAL FIX: Do NOT return the original state if serialization fails.
+    // The original state contains functions which will crash PeerJS/DataConnection.send().
+    // Return a safe fallback or minimal error state.
+    return { error: "Serialization Failed", timestamp: Date.now() };
   }
 };
 
@@ -99,7 +103,8 @@ const hydrateField = (field: FieldState): FieldState => {
 };
 
 export const hydrateGameState = (state: any): GameState => {
-  if (!state) return state;
+  if (!state || state.error) return state; // Handle error state
+  
   return {
     ...state,
     player1: hydratePlayer(state.player1),
