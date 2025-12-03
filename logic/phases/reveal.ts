@@ -19,6 +19,11 @@ export const executeFlipCards = async (
   setGameState((prev: any) => prev ? ({ ...prev, isResolving: true }) : null);
   
   addLog("揭示卡牌！");
+  
+  // Log the specific cards being flipped (Public Info)
+  if (gameState.player1.fieldSlot) addLog(`Player 1 翻开了 [${gameState.player1.fieldSlot.name}]`);
+  if (gameState.player2.fieldSlot) addLog(`Player 2 翻开了 [${gameState.player2.fieldSlot.name}]`);
+
   await delay(DELAY_MS/2);
 
   setGameState((prev: any) => prev ? ({

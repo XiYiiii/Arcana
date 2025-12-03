@@ -6,6 +6,7 @@ import { CardDefinition } from '../types';
 
 interface GameLogSidebarProps {
   logs: string[];
+  currentPlayerId: number | null; // null = Local (All visible), 1 or 2 = Online Role
 }
 
 const getLogStyle = (text: string) => {
@@ -23,13 +24,13 @@ const getLogStyle = (text: string) => {
   return { icon: '📝', border: 'border-stone-800', bg: 'bg-stone-900/50' };
 };
 
-export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs }) => {
+export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs, currentPlayerId }) => {
   const [hoveredCard, setHoveredCard] = useState<CardDefinition | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
 
   const handleMouseEnter = (e: React.MouseEvent, cardName: string) => {
       // Clean name: remove surrounding brackets if somehow still there
-      const cleanName = cardName.replace(/[\[\]]/g, '');
+      const cleanName = cardName.replace(/[\[\]]/g, '').trim();
       const def = CARD_DEFINITIONS.find(c => c.name === cleanName);
       if (def) {
           const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -44,15 +45,14 @@ export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs }) => {
   };
 
   const formatLogText = (text: string) => {
-    // Regex matches [Card Name]
-    const parts = text.split(/(\[.*?\])/g);
+    // Regex matches [Card Name] (Public) OR {{Card Name}} (Hidden/Private)
+    const parts = text.split(/(\[.*?\]|\{\{.*?\}\})/g);
     
     return parts.map((part, i) => {
-      // Check if it's a card reference in brackets
+      // 1. Check for [Card Name] (Public info like Played, Discarded, or Local Mode Draw)
       if (part.startsWith('[') && part.endsWith(']')) {
         const content = part.slice(1, -1);
         
-        // Check if content matches a known card name (or partial match for robust logging)
         const isCard = CARD_DEFINITIONS.some(c => c.name === content);
         
         if (isCard) {
@@ -67,9 +67,42 @@ export const GameLogSidebar: React.FC<GameLogSidebarProps> = ({ logs }) => {
                 </span>
             );
         }
-        
-        // Highlight keywords or other bracketed terms
         return <span key={i} className="text-stone-300 font-bold mx-0.5">{part}</span>;
+      }
+
+      // 2. Check for {{Card Name}} (Private info like Online Mode Draw)
+      if (part.startsWith('{{') && part.endsWith('}}')) {
+          const content = part.slice(2, -2);
+          
+          // Determine if this log entry belongs to the current player
+          // We assume the log text contains "Player 1" or "Player 2" or "P1"/"P2" to identify owner
+          // Or we check if currentPlayerId is null (Local mode sees all)
+          
+          let isMyLog = false;
+          if (currentPlayerId === null) {
+              isMyLog = true;
+          } else {
+              // Check if the FULL text line contains the player's identifier
+              const myName = `Player ${currentPlayerId}`;
+              if (text.includes(myName)) isMyLog = true;
+          }
+
+          if (isMyLog) {
+              // I am allowed to see this card
+              return (
+                <span 
+                    key={i} 
+                    className="text-blue-400 font-bold mx-0.5 cursor-help border-b border-blue-500/30 hover:bg-blue-900/50 px-0.5 rounded transition-colors"
+                    onMouseEnter={(e) => handleMouseEnter(e, content)}
+                    onMouseLeave={handleMouseLeave}
+                >
+                    [{content}]
+                </span>
+              );
+          } else {
+              // I am NOT allowed to see this card
+              return <span key={i} className="text-stone-500 italic mx-0.5">🎴 暗牌</span>;
+          }
       }
       
       // Formatting for player names

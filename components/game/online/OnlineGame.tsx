@@ -737,7 +737,7 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
     <div className="min-h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
       {/* LEFT SIDEBAR - LOGS */}
-      <GameLogSidebar logs={gameState.logs} />
+      <GameLogSidebar logs={gameState.logs} currentPlayerId={myId} />
 
       {/* RIGHT - MAIN GAME AREA */}
       <div className="flex-1 flex flex-col relative h-screen overflow-hidden">

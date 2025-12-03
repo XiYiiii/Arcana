@@ -80,11 +80,11 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
         }
 
         // LOGGING LOGIC:
-        // In LOCAL mode, we log exactly what was drawn (visible to hotseat players).
-        // In ONLINE mode, we log generically to prevent info leak via shared GameState logs.
-        if (ctx.gameMode === 'LOCAL') {
-            ctx.log(`[抽牌] ${p.name} 抽到了 [${card.name}]`);
-        } 
+        // Use {{CardName}} for potentially hidden info (Draws in Online Mode).
+        // Use [CardName] for public info (Draws in Local Mode).
+        // The GameLogSidebar will handle the rendering logic based on the viewer.
+        const cardLogName = ctx.gameMode === 'ONLINE' ? `{{${card.name}}}` : `[${card.name}]`;
+        ctx.log(`[抽牌] ${p.name} 抽到了 ${cardLogName}`);
 
         newHand.push(card);
         drawnCount++;
@@ -98,10 +98,7 @@ export const drawCards = (ctx: EffectContext, playerId: number, count: number, i
       }
     }
     
-    // Summary Log (or fallback for Online)
-    if (drawnCount > 0 && ctx.gameMode === 'ONLINE') {
-      ctx.log(`[抽牌] ${p.name} 抽取了 ${drawnCount} 张牌。`);
-    } else if (drawnCount === 0) {
+    if (drawnCount === 0) {
       ctx.log(`[抽牌] ${p.name} 无法抽牌 (牌堆空)。`);
     }
     
@@ -146,7 +143,7 @@ export const discardCards = (ctx: EffectContext, playerId: number, cardInstanceI
         const newHand = p.hand.filter(c => {
             if(treasuresToRemove.includes(c.instanceId)) return false; // Remove treasure from hand (to vault)
             if(idsToDiscard.includes(c.instanceId)) {
-                // Ensure discard logs always show name (Public Info)
+                // Ensure discard logs always show name (Public Info) - Use standard brackets
                 ctx.log(`[弃置] ${p.name} 弃置了 [${c.name}]`);
                 if(c.onDiscard) newPending.push({ type: 'ON_DISCARD', card: c, playerId: finalTargetId, description: "弃置触发！" });
                 return false; // Move to discard pile logic
