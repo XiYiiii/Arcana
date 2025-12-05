@@ -37,7 +37,8 @@ export const giveCardReward = (ctx: EffectContext, playerId: number, identifier:
     
     if (def) {
         // Treasure Availability Check
-        if (def.isTreasure && isTreasureInVault(ctx.gameState, def.id)) {
+        // Fix: Use !isTreasureInVault. If it is NOT in vault, then fail.
+        if (def.isTreasure && !isTreasureInVault(ctx.gameState, def.id)) {
              ctx.log(`[获取失败] ${def.name} 已在游戏中，宝库为空！`);
              ctx.setGameState((s:any) => s ? ({...s, interaction: null}) : null);
              return;
@@ -145,22 +146,38 @@ export const updateQuestProgress = (ctx: EffectContext, playerId: number, questI
                      });
                  }, 200);
             } else if (questId === 'quest-swords-world') {
-                 // Swords World Reward: Pick a treasure
+                 // Swords World Reward: Pick a treasure to HAND
                  setTimeout(() => {
                      ctx.setGameState(curr => {
                          if (!curr) return null;
+
+                         const possibleTreasures = [
+                             { id: 'treasure-swords', label: '💎 宝剑' },
+                             { id: 'treasure-cups', label: '💎 圣杯' },
+                             { id: 'treasure-wands', label: '💎 权杖' },
+                             { id: 'treasure-pentacles', label: '💎 星币' }
+                         ];
+
+                         const validOptions = possibleTreasures
+                             .filter(t => isTreasureInVault(curr, t.id))
+                             .map(t => ({
+                                 label: t.label,
+                                 action: () => giveCardReward(ctx, playerId, t.id, true)
+                             }));
+
+                         if (validOptions.length === 0) {
+                             ctx.log("[宝剑·世界] 奖励结算：宝库已空，无法获取宝藏。");
+                             return curr;
+                         }
+
                          return {
                              ...curr,
                              interaction: {
                                  id: `quest-swords-world-reward-${Date.now()}`,
                                  playerId: playerId,
                                  title: "任务奖励：宝剑·世界",
-                                 description: "指定一张宝库中存在的宝藏牌，并获取之：",
-                                 options: [
-                                     { label: "💎 宝剑", action: () => giveCardReward(ctx, playerId, 'treasure-swords', true) },
-                                     { label: "💎 圣杯", action: () => giveCardReward(ctx, playerId, 'treasure-cups', true) },
-                                     { label: "💎 权杖", action: () => giveCardReward(ctx, playerId, 'treasure-wands', true) }
-                                 ]
+                                 description: "指定一张宝库中的宝藏牌加入手牌：",
+                                 options: validOptions
                              }
                          }
                      });
