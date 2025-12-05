@@ -1,5 +1,6 @@
 
 
+
 import { Keyword } from "./types";
 
 export const MAX_HAND_SIZE = 3;
@@ -8,10 +9,10 @@ export const INITIAL_HP = 40;
 export const INITIAL_ATK = 2; 
 
 export const PHASE_DESCRIPTIONS = {
-  DRAW: "抽牌阶段：双方各抽1张牌。触发 抽到 特效。",
+  DRAW: "抽牌阶段：双方补充手牌至 3 张。触发 抽到 特效。",
   SET: "盖牌阶段：从手牌中盖置1张牌。可使用 插入(置牌前)。",
   REVEAL: "亮牌结算：包含 亮牌前 -> 翻开 -> 亮牌后 -> 结算特效。",
-  DISCARD: "弃牌阶段：弃置手牌直到剩3张。触发 弃置 特效。",
+  DISCARD: "弃牌阶段：弃置手牌直到剩 3 张 (或更少)。触发 弃置 特效。",
 };
 
 export const SUIT_COLORS = {
