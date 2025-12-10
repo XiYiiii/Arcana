@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
 import { generateDeck, shuffleDeck } from '../../../services/gameUtils';
@@ -452,13 +453,13 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
   };
 
   return (
-    <div className="min-h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
+    <div className="h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
       {/* LEFT SIDEBAR - LOGS - PASS NULL FOR LOCAL MODE */}
       <GameLogSidebar logs={gameState.logs} currentPlayerId={null} />
 
       {/* RIGHT - MAIN GAME AREA */}
-      <div className="flex-1 flex flex-col relative h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col relative h-full overflow-hidden">
           {/* Unified Background */}
           <div className="absolute inset-0 bg-stone-900 z-0"></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>

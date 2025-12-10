@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Peer, { DataConnection } from 'peerjs';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition, InteractionRequest } from '../../../types';
@@ -456,6 +457,95 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
       });
   };
 
+  const handleInstantUseLogic = async (player: PlayerState, cardInstanceId: string | null) => {
+      if (!cardInstanceId || !gameStateRef.current) return;
+      const gs = gameStateRef.current;
+      const card = player.hand.find(c => c.instanceId === cardInstanceId);
+      
+      if (!card || !card.onInstant) return;
+      if (card.isLocked) return; 
+      if (card.canInstant && !card.canInstant(gs.instantWindow)) return;
+
+      const oppId = getOpponentId(player.id);
+      const opp = oppId === 1 ? gs.player1 : gs.player2;
+      const moon = opp.hand.find(c => c.name.includes('月亮') && c.suit === 'WANDS');
+
+      if (moon && !card.isTreasure) {
+          // Interrupt Logic
+          setGameState(prev => {
+              if(!prev) return null;
+              return {
+                  ...prev,
+                  isResolving: true,
+                  interaction: {
+                      id: `moon-interrupt-${Date.now()}`,
+                      playerId: oppId,
+                      title: "【月亮】被动触发",
+                      description: `对手正在使用 [${card.name}]。是否发动 [${moon.name}] 进行无效？`,
+                      options: [
+                          {
+                              label: "发动 (无效并销毁月亮)",
+                              action: () => {
+                                  addLog(`[月亮] 触发！${opp.name} 无效了 [${card.name}] 并销毁了月亮！`);
+                                  const ctx = createEffectContext(oppId, moon);
+                                  destroyCard(ctx, moon.instanceId);
+                                  setGameState(cur => cur ? ({ ...cur, isResolving: false, interaction: null }) : null);
+                              }
+                          },
+                          {
+                              label: "不发动",
+                              action: () => {
+                                  setGameState(cur => cur ? ({ ...cur, interaction: null }) : null);
+                                  proceedInstant(player, card);
+                              }
+                          }
+                      ]
+                  }
+              }
+          });
+          return;
+      }
+
+      proceedInstant(player, card);
+  };
+
+  const proceedInstant = async (player: PlayerState, card: Card) => {
+      // 1. Show Visual
+      setGameState(prev => prev ? ({ ...prev, isResolving: true }) : null);
+      await triggerVisualEffect('INSTANT', card, player.id, "发动插入特效！");
+      
+      // 2. Execute Logic
+      card.onInstant && card.onInstant(createEffectContext(player.id, card));
+      
+      // 3. Consume Card (if applicable, e.g. discard after use unless specified otherwise)
+      // NOTE: Most instants remain in hand until discarded later or have custom discard logic in their onInstant (like Cups World).
+      // Standard rule: Instants are played from hand and go to discard pile.
+      setGameState(prev => {
+          if (!prev) return null;
+          const key = player.id === 1 ? 'player1' : 'player2';
+          const p = prev[key];
+          const stillInHand = p.hand.find(c => c.instanceId === card.instanceId);
+          
+          if (stillInHand && stillInHand.id === card.id) {
+             return {
+                ...prev,
+                isResolving: false,
+                [key]: { 
+                    ...p, 
+                    hand: p.hand.filter(c => c.instanceId !== card.instanceId), 
+                    discardPile: [...p.discardPile, card] 
+                }
+             };
+          }
+          return { ...prev, isResolving: false };
+      });
+
+      // Cleanup selections
+      setP1SelectedCardId(null);
+      p2SelectedCardIdRef.current = null;
+      setP2SelectedCardId(null);
+  };
+
   // --- Host Processing Logic (Ref Updated) ---
   const processGameAction = (playerId: number, action: GameActionPayload) => {
       if (!gameStateRef.current) return;
@@ -504,7 +594,6 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
               // 3. Card Selection
               else if (action.cardId && interaction.onCardSelect) {
                   // Find the card object (usually from hand or deck/pile as defined by context)
-                  // For simplicity, we search in likely places: Hand, Field, Deck, Discard
                   const findCard = (cid: string) => {
                       const p = playerId === 1 ? gs.player1 : gs.player2;
                       const opp = playerId === 1 ? gs.player2 : gs.player1;
@@ -577,77 +666,40 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
                  sendNetworkMessage('PLAYER_ACTION', { actionType: 'DISCARD_CARD', cardId: card.instanceId });
              }
          }
-         return; 
+         return;
     }
 
-    // Standard Selection Logic (Set/Instant)
-    let newSelectionId: string | null = null;
-    if (myId === 1) {
-        newSelectionId = card.instanceId === p1SelectedCardId ? null : card.instanceId;
-        setP1SelectedCardId(newSelectionId);
-    } else {
-        newSelectionId = card.instanceId === p2SelectedCardId ? null : card.instanceId;
-        setP2SelectedCardId(newSelectionId);
-    }
-
-    if (role === 'CLIENT') {
-        sendNetworkMessage('PLAYER_ACTION', { actionType: 'UPDATE_SELECTION', cardId: newSelectionId });
+    if (gameState?.phase === GamePhase.SET || gameState?.instantWindow !== InstantWindow.NONE) {
+        if (role === 'HOST') {
+            setP1SelectedCardId(card.instanceId === p1SelectedCardId ? null : card.instanceId);
+        } else {
+            // Client: Update local feedback selection AND notify Host
+            const newId = card.instanceId === p2SelectedCardId ? null : card.instanceId;
+            setP2SelectedCardId(newId);
+            sendNetworkMessage('PLAYER_ACTION', { actionType: 'UPDATE_SELECTION', cardId: newId });
+        }
     }
   };
 
-  const handleInstantUse = (cardInstanceId: string) => {
+  const handleInstantUse = (player: PlayerState, cardInstanceId: string | null) => {
+      const myId = role === 'HOST' ? 1 : 2;
+      if (player.id !== myId) return;
+      if (!cardInstanceId) return;
+
+      const card = player.hand.find(c => c.instanceId === cardInstanceId);
+      if (!card) return;
+
+      // Basic Client Validation
+      if (card.isLocked) return;
+      if (card.canInstant && !card.canInstant(gameState!.instantWindow)) return;
+
       if (role === 'HOST') {
-          if (!gameState) return;
-          handleInstantUseLogic(gameState.player1, cardInstanceId);
+          handleInstantUseLogic(player, cardInstanceId);
       } else {
           sendNetworkMessage('PLAYER_ACTION', { actionType: 'USE_INSTANT', cardId: cardInstanceId });
       }
   };
 
-  const handleInstantUseLogic = async (player: PlayerState, cardInstanceId: string | null) => {
-    if (!cardInstanceId || !gameStateRef.current || gameStateRef.current.isResolving) return;
-    const card = player.hand.find(c => c.instanceId === cardInstanceId);
-    if (!card || !card.onInstant) return;
-
-    if (card.isLocked) return;
-    if (card.canInstant && !card.canInstant(gameStateRef.current.instantWindow)) return;
-    
-    setGameState(prev => prev ? ({ ...prev, isResolving: true }) : null);
-    await triggerVisualEffect('INSTANT', card, player.id, "发动插入特效！");
-    
-    const ctx = createEffectContext(player.id, card);
-    card.onInstant && card.onInstant(ctx);
-    
-    setGameState(prev => {
-          if (!prev) return null;
-          const key = player.id === 1 ? 'player1' : 'player2';
-          const p = prev[key];
-          const stillInHand = p.hand.find(c => c.instanceId === card.instanceId);
-          
-          // Fix: Check if ID matches. If ID changed, it means card transformed and should stay in hand.
-          // This prevents "Cups Wheel" or other transform instants from being auto-discarded.
-          if (stillInHand && stillInHand.id === card.id) {
-             return {
-                ...prev,
-                isResolving: false,
-                [key]: { 
-                    ...p, 
-                    hand: p.hand.filter(c => c.instanceId !== card.instanceId), 
-                    discardPile: [...p.discardPile, card] 
-                }
-             };
-          }
-          // If not in hand (moved elsewhere) or transformed (ID changed), do not discard.
-          return { ...prev, isResolving: false };
-    });
-
-    if (player.id === 1) setP1SelectedCardId(null);
-    else {
-        p2SelectedCardIdRef.current = null;
-        setP2SelectedCardId(null);
-    }
-  };
-  
   // --- Viewer Handlers ---
   const openPileView = (type: 'DISCARD' | 'DECK' | 'VAULT', pid: number) => {
       if (!gameState) return;
@@ -661,164 +713,192 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           cards = player.discardPile;
           title = `${player.name} 的弃牌堆`;
       } else if (type === 'DECK') {
-          if (pid !== (role === 'HOST' ? 1 : 2)) return;
           cards = player.deck;
           title = `${player.name} 的抽牌堆 (查看)`;
-          sorted = true;
+          sorted = true; 
       } else if (type === 'VAULT') {
           const treasures = CARD_DEFINITIONS.filter(c => c.isTreasure).map(t => ({...t, instanceId: `vault-${t.id}`, marks: [], description: t.description || ""}));
           cards = treasures;
           title = `${player.name} 的宝库`;
       }
+      
       setViewingPile({ type, pid, cards, title, sorted });
   };
 
-  const handleReadyClick = () => {
-      if (role === 'HOST') {
-          handleToggleReady(1);
-      } else {
-          sendNetworkMessage('PLAYER_ACTION', { actionType: 'TOGGLE_READY' });
-      }
+  const getActionButton = () => {
+    if (!gameState) return null;
+    const { phase, instantWindow, player1, player2, field } = gameState;
+    const myId = role === 'HOST' ? 1 : 2;
+    const me = myId === 1 ? player1 : player2;
+    const isMyReady = gameState.playerReadyState[myId];
+    
+    // Define locally for use in canSet check
+    const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
+
+    if (phase === GamePhase.GAME_OVER) {
+        return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
+    }
+
+    const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
+    const readyClasses = isMyReady 
+        ? "bg-stone-800 text-stone-500 border-stone-950 cursor-not-allowed" 
+        : "bg-stone-700 hover:bg-stone-600 text-stone-200 border-stone-900";
+
+    const onAction = () => {
+        if (role === 'HOST') {
+            handleToggleReady(1);
+        } else {
+            sendNetworkMessage('PLAYER_ACTION', { actionType: 'TOGGLE_READY' });
+        }
+    };
+
+    if (phase === GamePhase.DRAW) return <button onClick={onAction} disabled={isMyReady} className={`${commonClasses} ${readyClasses}`}>{isMyReady ? "等待对手..." : "抽牌阶段 (准备)"}</button>;
+    
+    if (phase === GamePhase.SET) {
+       const mySelection = myId === 1 ? p1SelectedCardId : p2SelectedCardId;
+       const selectedCard = me.hand.find(c => c.instanceId === mySelection);
+       
+       // Check validity using isSwordsStarActive
+       const canSet = me.hand.length > 0 ? (selectedCard && (selectedCard.canSet !== false || (isSwordsStarActive && selectedCard.name.includes('太阳'))) && !isCardConditionLocked(me, selectedCard)) : true;
+       
+       const disabled = isMyReady || !canSet;
+       
+       return <button onClick={onAction} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed' : 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-950 shadow-emerald-900/30'}`}>{isMyReady ? "等待对手..." : "确认盖牌"}</button>;
+    }
+    
+    if (phase === GamePhase.REVEAL) {
+       if (instantWindow === InstantWindow.BEFORE_REVEAL) return <button onClick={onAction} disabled={isMyReady} className={`${commonClasses} ${isMyReady ? 'bg-stone-800 text-stone-500' : 'bg-amber-800 hover:bg-amber-700 text-amber-100 border-amber-950 shadow-amber-900/30'}`}>{isMyReady ? "等待对手..." : "揭示卡牌"}</button>;
+       if (instantWindow === InstantWindow.AFTER_REVEAL) return <button onClick={onAction} disabled={isMyReady} className={`${commonClasses} ${isMyReady ? 'bg-stone-800 text-stone-500' : 'bg-indigo-900 hover:bg-indigo-800 text-indigo-100 border-black shadow-indigo-900/30'}`}>{isMyReady ? "等待对手..." : "结算效果"}</button>;
+       return <button className={`${commonClasses} bg-stone-800 text-stone-500 border-stone-950`} disabled>结算中...</button>;
+    }
+    
+    if (phase === GamePhase.DISCARD) {
+       const handCount = me.hand.filter(c => !c.isTreasure).length;
+       const mustDiscard = handCount > me.maxHandSize && !me.skipDiscardThisTurn;
+       const disabled = mustDiscard || isMyReady;
+       return <button onClick={onAction} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800 text-stone-600 border-stone-950' : 'bg-stone-700 hover:bg-stone-600 text-stone-200 border-stone-900'}`}>{mustDiscard ? "请先弃牌" : (isMyReady ? "等待对手..." : "结束回合")}</button>;
+    }
+    return null;
   };
 
-  if (connState !== 'CONNECTED' || !gameState) {
-      return <ConnectionScreen onCreateGame={startHosting} onJoinGame={joinGame} onBack={onExit} isConnecting={connState === 'CONNECTING' || connState === 'HOSTING'} hostId={myPeerId} error={networkError} />;
-  }
+  // --- Interaction Wrapper ---
+  // Wraps user inputs to send network message if Client
+  const networkInteractionProxy = (request: InteractionRequest | null): InteractionRequest | null => {
+      if (!request) return null;
+      const myId = role === 'HOST' ? 1 : 2;
+      
+      // If not my interaction, show it but read-only (optional, or just hide controls)
+      // Usually interaction is modal for the specific player.
+      if (request.playerId !== myId) return null; // Or show "Waiting for opponent..."
 
-  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, playerReadyState, field } = gameState;
-  const myId = role === 'HOST' ? 1 : 2;
-  const myPlayer = myId === 1 ? player1 : player2;
-  const oppPlayer = myId === 1 ? player2 : player1;
-  const mySelectionId = myId === 1 ? p1SelectedCardId : p2SelectedCardId;
-  const myReady = playerReadyState[myId];
-  const oppReady = playerReadyState[myId === 1 ? 2 : 1];
+      if (role === 'HOST') return request;
 
-  // Dynamic Validation for My Player
-  const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
-  const mySelCard = myPlayer.hand.find(c => c.instanceId === mySelectionId);
-  
-  const canSetMy = myPlayer.hand.length > 0 
-      ? (mySelCard && (mySelCard.canSet !== false || (isSwordsStarActive && mySelCard.name.includes('太阳'))) && !isCardConditionLocked(myPlayer, mySelCard)) 
-      : true; // Empty hand allows set (logic handles empty)
-
-  const canInstantMy = mySelCard && mySelCard.canInstant?.(instantWindow) && !mySelCard.isLocked;
-
-  const isActionDisabled = () => {
-      if (phase === GamePhase.SET) return myPlayer.hand.length > 0 && (!mySelectionId || !canSetMy); // Must select valid card
-      if (phase === GamePhase.DISCARD) return myPlayer.hand.filter(c=>!c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn;
-      return false;
-  };
-
-  // Only show interaction overlay if it is FOR ME
-  const showInteraction = interaction && interaction.playerId === myId;
-
-  // --- Render Proxy Interaction for Client ---
-  let renderedInteraction = interaction;
-  
-  if (role === 'CLIENT' && interaction) {
-      // Reconstruct action handlers that send network messages
-      renderedInteraction = {
-          ...interaction,
-          onConfirm: (val: number) => {
-              sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', value: val });
-          },
-          onCardSelect: (card: Card) => {
-              sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', cardId: card.instanceId });
-          },
-          options: interaction.options?.map((opt, idx) => ({
+      // CLIENT PROXY
+      return {
+          ...request,
+          onConfirm: (val) => sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', value: val }),
+          onCardSelect: (card) => sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', cardId: card.instanceId }),
+          options: request.options?.map((opt, idx) => ({
               ...opt,
-              action: () => {
-                  sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', optionIndex: idx });
-              }
+              action: () => sendNetworkMessage('PLAYER_ACTION', { actionType: 'CONFIRM_INTERACTION', optionIndex: idx })
           }))
       };
-  }
-
-  const getActionButton = () => {
-    if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
-    
-    // Check if opponent is interacting (Blocking Logic)
-    if (interaction && interaction.playerId !== myId) {
-        return <div className="text-amber-500 font-bold animate-pulse text-lg">对手正在抉择...</div>;
-    }
-
-    if (myReady && !oppReady) {
-        return (
-            <div className="flex flex-col items-center gap-2 w-full">
-                <button onClick={handleReadyClick} className="w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all border-b-4 bg-emerald-800 text-emerald-200 border-emerald-950 active:translate-y-1 active:border-b-0 hover:bg-emerald-700">
-                    已准备 (取消)
-                </button>
-                <span className="text-[10px] text-stone-500 animate-pulse">等待对方...</span>
-            </div>
-        );
-    }
-
-    if (isResolving || (myReady && oppReady)) {
-        return <div className="text-emerald-500 font-bold animate-pulse text-lg">处理中...</div>;
-    }
-
-    const disabled = isActionDisabled();
-    return (
-        <button onClick={handleReadyClick} disabled={disabled} className={`w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1 ${disabled ? "bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed" : "bg-stone-700 hover:bg-stone-600 hover:shadow-stone-500/20 text-stone-200 border-stone-900"}`}>
-            {phase === GamePhase.SET && disabled ? "请先盖牌" : phase === GamePhase.DISCARD && disabled ? "请先弃牌" : "准备 (Ready)"}
-        </button>
-    );
   };
 
+  // --- RENDER ---
+
+  if (connState === 'IDLE' || connState === 'CONNECTING' || (connState === 'HOSTING' && !gameState)) {
+      return (
+          <ConnectionScreen 
+              onCreateGame={startHosting}
+              onJoinGame={joinGame}
+              onBack={onExit}
+              isConnecting={connState === 'CONNECTING'}
+              hostId={myPeerId}
+              error={networkError}
+          />
+      );
+  }
+
+  if (!gameState) return <div className="bg-stone-900 h-screen text-stone-400 flex items-center justify-center font-serif">Loading Game State...</div>;
+
+  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState;
+  const myId = role === 'HOST' ? 1 : 2;
+  const me = myId === 1 ? player1 : player2;
+  const opp = myId === 1 ? player2 : player1;
+  const mySelection = myId === 1 ? p1SelectedCardId : p2SelectedCardId;
+  
+  const myHandCount = me.hand.filter(c => !c.isTreasure).length;
+  const myMustDiscard = myHandCount > me.maxHandSize && !me.skipDiscardThisTurn;
+  
+  // Define isSwordsStarActive for render scope validation
+  const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
+
+  // Local Validation for UI Enablement
+  const mySelectedCard = me.hand.find(c => c.instanceId === mySelection);
+  const canSet = me.hand.length > 0 ? (mySelectedCard && (mySelectedCard.canSet !== false || (isSwordsStarActive && mySelectedCard.name.includes('太阳'))) && !isCardConditionLocked(me, mySelectedCard)) : true;
+  const canInstant = mySelectedCard && mySelectedCard.canInstant?.(instantWindow) && !mySelectedCard.isLocked;
+
+  // Render Interaction: If it's mine, show it. If opponent's, maybe show wait?
+  const visibleInteraction = interaction && interaction.playerId === myId ? networkInteractionProxy(interaction) : null;
+
   return (
-    <div className="min-h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
+    <div className="h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
       
-      {/* LEFT SIDEBAR - LOGS - PASS CURRENT ID FOR ONLINE MODE */}
+      {/* Sidebar: Show Logs - Hide opponent private info */}
       <GameLogSidebar logs={gameState.logs} currentPlayerId={myId} />
 
-      {/* RIGHT - MAIN GAME AREA */}
-      <div className="flex-1 flex flex-col relative h-screen overflow-hidden">
-          {/* Unified Background */}
+      {/* Main Area */}
+      <div className="flex-1 flex flex-col relative h-full overflow-hidden">
           <div className="absolute inset-0 bg-stone-900 z-0"></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
           <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
           
-          {/* Visual Effects Layer */}
           <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
 
           {/* Top Bar */}
           <div className="absolute top-4 right-4 z-50 flex gap-3">
-             <div className="flex items-center gap-2 px-3 py-2 bg-stone-900/60 rounded border border-stone-800 backdrop-blur text-[10px]">
-                 <span className={`w-2 h-2 rounded-full ${connState==='CONNECTED'?'bg-emerald-500':'bg-red-500'}`}></span>
-                 <span className="text-stone-400 font-bold">{role === 'HOST' ? '主机' : '客机'}</span>
-             </div>
-             <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出</button>
-             <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur">网络调试</button>
+             <button onClick={onExit} className="text-[10px] bg-red-900/40 text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出</button>
+             <button onClick={() => setShowGallery(!showGallery)} className="text-[10px] font-bold bg-stone-900/60 text-amber-600 border border-amber-900/30 px-4 py-2 rounded backdrop-blur">📖 图鉴</button>
+             <button onClick={() => setShowNetworkDebug(!showNetworkDebug)} className="text-[10px] bg-stone-900/60 text-emerald-500 border border-emerald-900/30 px-3 py-2 rounded backdrop-blur">📶 网络: {connState}</button>
           </div>
 
+          {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
+          {viewingPile && <CardPileOverlay title={viewingPile.title} cards={viewingPile.cards} onClose={() => setViewingPile(null)} sorted={viewingPile.sorted} />}
+          
           {showNetworkDebug && (
               <NetworkDebugOverlay 
                   logs={networkLogs} 
                   role={role} 
                   onSimulateReceive={() => {}} 
                   onClearLogs={() => setNetworkLogs([])} 
-                  onClose={() => setShowNetworkDebug(false)}
-              />
-          )}
-
-          {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
-          
-          {viewingPile && (
-              <CardPileOverlay 
-                  title={viewingPile.title} 
-                  cards={viewingPile.cards} 
-                  onClose={() => setViewingPile(null)} 
-                  sorted={viewingPile.sorted}
+                  onClose={() => setShowNetworkDebug(false)} 
               />
           )}
 
           {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
-          {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={handleDismissEffect} />}
-          {showInteraction && <InteractionOverlay request={renderedInteraction!} />}
+          
+          {/* Active Effect Overlay - Supports Dismissal via Network */}
+          {activeEffect && (
+              <EffectOverlay 
+                  effect={activeEffect} 
+                  onDismiss={interaction ? undefined : handleDismissEffect} // Hide dismiss if there's an interaction on top (rare)
+              />
+          )}
+          
+          {visibleInteraction && <InteractionOverlay request={visibleInteraction} />}
+          
+          {interaction && interaction.playerId !== myId && !activeEffect && (
+              <div className="absolute inset-0 z-[45] flex items-center justify-center pointer-events-none">
+                  <div className="bg-black/60 text-stone-400 px-6 py-3 rounded-xl border border-stone-700 backdrop-blur-sm animate-pulse">
+                      等待对手操作...
+                  </div>
+              </div>
+          )}
 
           <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
           
-          {/* Status Ticker */}
+          {/* Status */}
           <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
              <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
              <span className="text-stone-400 font-serif">
@@ -827,41 +907,53 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
                  instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
                  instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
              </span>
-             {gameState.field && (
-                 <span className={`ml-4 font-serif font-bold ${gameState.field.active ? 'text-emerald-500' : 'text-stone-500'}`}>
-                     🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
-                 </span>
-             )}
-             <span className="ml-4 text-xs font-bold text-stone-600">[联机模式 - {role === 'HOST' ? '主机' : '客户端'}]</span>
+             {gameState.field && <span className="ml-4 text-emerald-500 font-serif font-bold">🏟️ 场地: {gameState.field.card.name}</span>}
+             <span className="ml-4 text-xs font-bold text-indigo-400">[联机: {role === 'HOST' ? '主机' : '客户端'}]</span>
           </div>
 
           <div className="flex-grow flex flex-col relative overflow-hidden z-10">
+            {/* OPPONENT AREA (Top) */}
             <PlayerArea 
-              player={oppPlayer} isOpponent phase={phase} 
-              selectedCardId={null} mustDiscard={false}
-              canSet={false} canInstant={false} isResolving={isResolving} instantWindow={instantWindow}
-              onSelect={(c) => handleCardClick(oppPlayer, c)} onInstant={(id) => {}}
-              onViewDiscard={() => openPileView('DISCARD', myId === 1 ? 2 : 1)}
-              onViewDeck={() => openPileView('DECK', myId === 1 ? 2 : 1)}
-              onViewVault={() => openPileView('VAULT', myId === 1 ? 2 : 1)}
-              hideHand={true} // Hide opponent's hand in online mode
+              player={opp} 
+              isOpponent={true} 
+              phase={phase} 
+              selectedCardId={null} // Don't show opp selection
+              mustDiscard={false} // Managed by them
+              canSet={false} 
+              canInstant={false} 
+              isResolving={isResolving} 
+              instantWindow={instantWindow}
+              onSelect={() => {}} 
+              onInstant={() => {}}
+              onViewDiscard={() => openPileView('DISCARD', opp.id)}
+              onViewDeck={() => openPileView('DECK', opp.id)} // View local version of their deck? Deck is hidden info usually. Host sees true deck. Client sees ?
+              onViewVault={() => openPileView('VAULT', opp.id)}
+              enableControls={false}
+              hideHand={true} // Force hide opponent hand in online mode
             />
             
             <FieldArea gameState={gameState} player1={player1} player2={player2} />
 
+            {/* MY AREA (Bottom) */}
             <PlayerArea 
-              player={myPlayer} phase={phase} 
-              selectedCardId={mySelectionId} mustDiscard={myPlayer.hand.filter(c => !c.isTreasure).length > myPlayer.maxHandSize && !myPlayer.skipDiscardThisTurn}
-              canSet={canSetMy} canInstant={!!canInstantMy} isResolving={isResolving} instantWindow={instantWindow}
-              onSelect={(c) => handleCardClick(myPlayer, c)} onInstant={(id) => handleInstantUse(id)}
-              onViewDiscard={() => openPileView('DISCARD', myId)}
-              onViewDeck={() => openPileView('DECK', myId)}
-              onViewVault={() => openPileView('VAULT', myId)}
-              hideHand={false} // Show my hand
+              player={me} 
+              phase={phase} 
+              selectedCardId={mySelection} 
+              mustDiscard={myMustDiscard}
+              canSet={canSet} 
+              canInstant={!!canInstant} 
+              isResolving={isResolving} 
+              instantWindow={instantWindow}
+              onSelect={(c) => handleCardClick(me, c)} 
+              onInstant={(id) => handleInstantUse(me, id)}
+              onViewDiscard={() => openPileView('DISCARD', me.id)}
+              onViewDeck={() => openPileView('DECK', me.id)}
+              onViewVault={() => openPileView('VAULT', me.id)}
+              enableControls={true}
+              hideHand={false}
             />
           </div>
 
-          {/* Bottom Action Panel - Modified to remove logs */}
           <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex justify-center items-center h-24 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative shrink-0">
              <div className="w-full max-w-sm flex items-center justify-center">
                 {getActionButton()}
