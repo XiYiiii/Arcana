@@ -562,8 +562,8 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
           if (gs.phase === GamePhase.DISCARD) {
               const card = player.hand.find(c => c.instanceId === action.cardId);
               if (card && !card.isTreasure) {
-                  const handCount = player.hand.filter(c => !c.isTreasure).length;
-                  if (handCount > player.maxHandSize && !player.skipDiscardThisTurn) {
+                  // Allow voluntary discard (Removed check)
+                  if (role === 'HOST') {
                       const ctx = createEffectContext(playerId, card);
                       discardCards(ctx, playerId, [card.instanceId]);
                   }
@@ -657,14 +657,12 @@ export const OnlineGame: React.FC<OnlineGameProps> = ({ enabledCardIds, initialH
              return;
          }
          
-         const handCount = player.hand.filter(c => !c.isTreasure).length;
-         if (handCount > player.maxHandSize && !player.skipDiscardThisTurn) {
-             if (role === 'HOST') {
-                 const ctx = createEffectContext(player.id, card);
-                 discardCards(ctx, player.id, [card.instanceId]);
-             } else {
-                 sendNetworkMessage('PLAYER_ACTION', { actionType: 'DISCARD_CARD', cardId: card.instanceId });
-             }
+         // Allow voluntary discard
+         if (role === 'HOST') {
+             const ctx = createEffectContext(player.id, card);
+             discardCards(ctx, player.id, [card.instanceId]);
+         } else {
+             sendNetworkMessage('PLAYER_ACTION', { actionType: 'DISCARD_CARD', cardId: card.instanceId });
          }
          return;
     }

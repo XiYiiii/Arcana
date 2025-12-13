@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { INITIAL_HP, INITIAL_ATK } from './constants';
 import { CARD_DEFINITIONS } from './data/cards';
@@ -6,8 +7,9 @@ import { StartScreen } from './components/screens/StartScreen';
 import { GameSetupScreen } from './components/screens/GameSetupScreen';
 import { LocalGame } from './components/game/local/LocalGame';
 import { OnlineGame } from './components/game/online/OnlineGame';
+import { PVEGame } from './components/game/pve/PVEGame';
 
-type AppMode = 'MENU' | 'BUILDER' | 'LOCAL_GAME' | 'ONLINE_GAME';
+type AppMode = 'MENU' | 'BUILDER' | 'LOCAL_GAME' | 'ONLINE_GAME' | 'PVE_GAME';
 
 export default function App() {
   // App Mode State
@@ -33,6 +35,7 @@ export default function App() {
         <StartScreen 
           onStartGame={() => setAppMode('LOCAL_GAME')} 
           onStartOnlineGame={() => setAppMode('ONLINE_GAME')}
+          onStartPVE={() => setAppMode('PVE_GAME')}
           onOpenDeckBuilder={() => setAppMode('BUILDER')} 
         />
       );
@@ -63,6 +66,17 @@ export default function App() {
   if (appMode === 'ONLINE_GAME') {
       return (
         <OnlineGame 
+          enabledCardIds={enabledCardIds}
+          initialHp={initialHp}
+          initialHandSize={initialHandSize}
+          onExit={() => setAppMode('MENU')}
+        />
+      );
+  }
+
+  if (appMode === 'PVE_GAME') {
+      return (
+        <PVEGame 
           enabledCardIds={enabledCardIds}
           initialHp={initialHp}
           initialHandSize={initialHandSize}
