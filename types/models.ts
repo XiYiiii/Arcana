@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { CardSuit, GamePhase, InstantWindow, Keyword } from './enums';
+import { CardSuit, GamePhase, InstantWindow, Keyword, AITag } from './enums';
 import { DelayedEffect, PendingEffect, VisualEvent } from './events';
 import { InteractionRequest } from './ui';
 
@@ -14,6 +14,13 @@ export type EffectContext = {
   gameMode?: 'LOCAL' | 'ONLINE'; // To control log privacy
 };
 
+export interface CardAIInfo {
+  onReveal?: AITag[];    // Tags for "On Play" effects
+  onInstant?: AITag[];   // Tags for "Instant" effects
+  onDraw?: AITag[];      // Tags for "On Draw" effects
+  onDiscard?: AITag[];   // Tags for "On Discard" effects
+}
+
 export interface CardDefinition {
   id: string;
   name: string;
@@ -23,6 +30,9 @@ export interface CardDefinition {
   keywords?: Keyword[]; // For UI tooltips and filtering
   isTreasure?: boolean; // Immune to invalidate/reverse/swap/seize
   
+  // AI Metadata
+  aiTags?: CardAIInfo;
+
   // Logic Hooks
   canSet?: boolean; // Default true
   // Returns true if card can be used as instant in this window

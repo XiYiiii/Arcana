@@ -43,3 +43,17 @@ export enum Keyword {
   LOCK = 'LOCK',         // 锁定
   TRANSFORM = 'TRANSFORM', // 变化
 }
+
+// New AI Tags
+export enum AITag {
+  DAMAGE = 'DAMAGE',       // 造成伤害
+  HEAL = 'HEAL',           // 恢复生命
+  DRAW = 'DRAW',           // 抽牌
+  DISCARD = 'DISCARD',     // 弃牌 (己方或对方)
+  BUFF = 'BUFF',           // 增益 (加攻、免疫、双倍等)
+  DEBUFF = 'DEBUFF',       // 减益 (减攻、禁疗、反转、无效等)
+  CONTROL = 'CONTROL',     // 控制 (夺取、锁定、交换、场地操作)
+  TRANSFORM = 'TRANSFORM', // 变化
+  FIELD = 'FIELD',         // 设置场地
+  SPECIAL = 'SPECIAL',     // 特殊 (任务、获取宝藏、特殊胜利)
+}

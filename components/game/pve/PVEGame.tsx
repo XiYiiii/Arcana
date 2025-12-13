@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
 import { generateDeck, shuffleDeck } from '../../../services/gameUtils';
-import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress } from '../../../services/actions'; 
+import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress, isTreasureInVault } from '../../../services/actions'; 
 import { MAX_HAND_SIZE, INITIAL_ATK } from '../../../constants';
 import { CARD_DEFINITIONS } from '../../../data/cards';
 
@@ -18,6 +18,10 @@ import { executeDrawPhase } from '../../../logic/phases/draw';
 import { executeSetPhase } from '../../../logic/phases/set';
 import { executeFlipCards, executeResolveEffects } from '../../../logic/phases/reveal';
 import { executeDiscardPhase } from '../../../logic/phases/discard';
+
+// Import AI Logic
+import { calculateCardUtilityDetailed } from './aiLogic';
+import { handleAIInteraction } from './aiDecisions';
 
 interface PVEGameProps {
     enabledCardIds: string[];
@@ -35,6 +39,7 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
   const [showDebug, setShowDebug] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [revealAIHand, setRevealAIHand] = useState(false); // PVE Exclusive Cheat
+  const [showAIScores, setShowAIScores] = useState(false); // New AI Score Debug
   
   // Pile Viewer State
   const [viewingPile, setViewingPile] = useState<{ type: 'DISCARD' | 'DECK' | 'VAULT', pid: number, cards: Card[], title: string, sorted?: boolean } | null>(null);
@@ -63,81 +68,22 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
      };
   };
 
-  // --- INTELLIGENT AI UTILITY SCORING ---
-  const calculateCardUtility = (card: Card, ai: PlayerState, opp: PlayerState, field: any): number => {
-      let score = 50; // Base score
-
-      // Helper: Estimate damage
-      let estimatedDmg = 0;
-      if (card.name.includes('太阳')) estimatedDmg = 2 * ai.atk;
-      else if (card.name.includes('恶魔')) estimatedDmg = ai.atk;
-      else if (card.name.includes('战车')) estimatedDmg = ai.atk * 0.8;
-      else if (card.name.includes('宝剑·愚者')) estimatedDmg = 2 * ai.atk;
-      
-      // 1. LETHALITY
-      if (estimatedDmg >= opp.hp) return 9999; 
-      score += estimatedDmg * 2;
-
-      // 2. SURVIVAL
-      const isLowHp = ai.hp <= 15;
-      const isCriticalHp = ai.hp <= 8;
-
-      if (isLowHp) {
-          if (card.name.includes('女祭司') || card.name.includes('圣杯·月亮') || card.name.includes('死神')) {
-              score += isCriticalHp ? 200 : 50;
-          }
-          if (card.name.includes('宝剑·愚者') || card.name.includes('宝剑·魔术师')) {
-              score -= 100;
-          }
-      }
-
-      // 3. RESOURCE MANAGEMENT
-      if (ai.hand.length <= 2) {
-          if (card.keywords?.includes(Keyword.SCRY) || card.name.includes('战车') || card.name.includes('星星')) {
-              score += 40;
-          }
-      }
-
-      // 4. FIELD LOGIC
-      if (!field && card.keywords?.includes(Keyword.FIELD)) {
-          score += 30;
-      }
-      if (field && field.ownerId !== ai.id && (field.card.name.includes('死神') || field.card.name.includes('审判'))) {
-          if (card.keywords?.includes(Keyword.FIELD) || card.name.includes('力量')) {
-              score += 60;
-          }
-      }
-
-      // 5. SPECIFIC COMBOS & SYNERGIES
-      if (card.name.includes('权杖·星星')) {
-          const hasTargets = ai.deck.some(c => c.name.includes('太阳') || c.name.includes('月亮'));
-          score += hasTargets ? 50 : -30;
-      }
-      if (card.name.includes('星币·皇帝')) {
-          score += (ai.hp > 20) ? 40 : -50;
-      }
-      if (card.name.includes('宝剑·正义')) {
-          const diff = opp.hand.length - ai.hand.length;
-          if (diff > 0) score += diff * 15;
-      }
-      
-      if (card.isTreasure) score += 25;
-
-      // 6. RANDOM FUZZ
-      score += Math.random() * 15;
-
-      return score;
-  };
+  // AI Debug Info Calculation
+  const aiDebugInfo = useMemo(() => {
+      if (!showAIScores || !gameState) return undefined;
+      const info: Record<string, { score: number, reasons: string[] }> = {};
+      gameState.player2.hand.forEach(c => {
+          const util = calculateCardUtilityDetailed(c, gameState.player2, gameState.player1, gameState);
+          info[c.instanceId] = util;
+      });
+      return info;
+  }, [showAIScores, gameState]);
 
   // --- Initialization ---
   useEffect(() => {
       const allowedDefs = CARD_DEFINITIONS.filter(c => enabledCardIds.includes(c.id) || c.isTreasure);
-      
       const finalDefs = allowedDefs.length < 10 ? CARD_DEFINITIONS : allowedDefs;
-      if (allowedDefs.length < 10) {
-          console.warn("Selected deck too small, reverting to full deck.");
-      }
-
+      
       const p1Deck = shuffleDeck(generateDeck(1, finalDefs));
       const p2Deck = shuffleDeck(generateDeck(2, finalDefs));
       
@@ -191,12 +137,11 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
       });
   };
 
-  // --- Rule: Empty Hand Check (Or All Locked) ---
+  // --- Rule: Empty Hand Check ---
   useEffect(() => {
     if (!gameState) return;
     const checkPlayer = (pid: number) => {
       const p = pid === 1 ? gameState.player1 : gameState.player2;
-      
       const isHandEmpty = p.hand.length === 0;
       const isAllLocked = p.hand.length > 0 && p.hand.every(c => c.isLocked);
 
@@ -209,7 +154,6 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
          }
       }
     };
-
     checkPlayer(1);
     checkPlayer(2);
   }, [gameState?.player1.hand, gameState?.player2.hand]);
@@ -279,49 +223,70 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
       });
   };
 
-  // --- AI Logic (Player 2) ---
+  // --- AI LOGIC: INTERACTIONS & PHASES ---
   useEffect(() => {
       if (!gameState) return;
       const { phase, player2, player1, field, interaction } = gameState;
 
+      // 0. INTERACTION HANDLING (AI BRAIN)
+      if (interaction && interaction.playerId === 2) {
+          // Delay to simulate thinking and not make UI flash too fast
+          const timer = setTimeout(() => {
+              handleAIInteraction(interaction, gameState, setGameState);
+          }, 1000);
+          return () => clearTimeout(timer);
+      }
+
       // 1. SET Phase: Strategic Selection
-      if (phase === GamePhase.SET && !p2SelectedCardId) {
+      if (phase === GamePhase.SET && !p2SelectedCardId && !interaction) {
           const timer = setTimeout(() => {
               const hand = player2.hand;
               const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
 
               // Filter valid cards
               const validCards = hand.filter(c => {
-                   const locked = c.isLocked; // Simplified check for AI
+                   const locked = c.isLocked; 
                    const canSetRule = c.canSet !== false || (isSwordsStarActive && c.name.includes('太阳'));
                    return !locked && canSetRule;
               });
 
               if (validCards.length > 0) {
                   // Calculate Utility Scores
-                  const scoredCards = validCards.map(c => ({
-                      card: c,
-                      score: calculateCardUtility(c, player2, player1, field)
-                  }));
+                  const scoredCards = validCards.map(c => {
+                      const util = calculateCardUtilityDetailed(c, player2, player1, gameState);
+                      const fuzz = Math.random() * 5;
+                      return {
+                          card: c,
+                          score: util.score + fuzz,
+                      };
+                  });
 
                   scoredCards.sort((a, b) => b.score - a.score);
                   const bestCard = scoredCards[0].card;
                   
-                  console.log(`[AI Thinking] Top pick: ${bestCard.name} (Score: ${scoredCards[0].score.toFixed(1)})`);
                   setP2SelectedCardId(bestCard.instanceId);
               }
           }, 1500 + Math.random() * 1000); 
           return () => clearTimeout(timer);
       }
       
-      // 2. DISCARD Phase
-      if (phase === GamePhase.DISCARD) {
+      // 2. DISCARD Phase: Intelligent Discard
+      if (phase === GamePhase.DISCARD && !interaction) {
           const hand = player2.hand.filter(c => !c.isTreasure);
           if (hand.length > player2.maxHandSize && !player2.skipDiscardThisTurn) {
                const timer = setTimeout(() => {
-                   const discardable = [...hand].sort((a,b) => a.rank - b.rank);
-                   // Discard largest rank (usually slowest/utility)
-                   const toDiscard = discardable[discardable.length - 1]; 
+                   // Calculate utility for all hand cards
+                   const scoredCards = hand.map(c => {
+                       const util = calculateCardUtilityDetailed(c, player2, player1, gameState);
+                       return {
+                           card: c,
+                           score: util.score + Math.random() * 3
+                       };
+                   });
+                   
+                   // Sort Ascending (Lowest Score First) -> Discard worst
+                   scoredCards.sort((a, b) => a.score - b.score);
+                   const toDiscard = scoredCards[0].card;
                    
                    const ctx = createEffectContext(2, toDiscard);
                    discardCards(ctx, 2, [toDiscard.instanceId]);
@@ -394,7 +359,6 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
        addLog(`[月亮] 触发！AI使用 [${moon.name}] 无效了您的 [${card.name}]！`);
        const ctx = createEffectContext(oppId, moon);
        destroyCard(ctx, moon.instanceId);
-       // Instant is consumed but effect cancelled
        return;
     }
 
@@ -470,7 +434,7 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
     
     if (phase === GamePhase.DRAW) return <button onClick={onDrawPhase} className={`${commonClasses} bg-stone-700 hover:bg-stone-600 hover:shadow-stone-500/20 text-stone-200 border-stone-900`}>抽牌阶段</button>;
     if (phase === GamePhase.SET) {
-       const disabled = !canSetP1 || !p2SelectedCardId; // Wait for AI
+       const disabled = !canSetP1 || !p2SelectedCardId; 
        return <button onClick={onSetPhase} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed' : 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-950 shadow-emerald-900/30'}`}>{!p2SelectedCardId ? "等待 AI 思考..." : "确认盖牌"}</button>;
     }
     if (phase === GamePhase.REVEAL) {
@@ -484,6 +448,13 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
     }
     return null;
   };
+
+  // Determine if Interaction Overlay should be shown
+  // Only show if interaction belongs to Player 1 (Human)
+  const shouldShowInteraction = interaction && interaction.playerId === 1;
+
+  // Show "Waiting" indicator if AI is interacting
+  const isAIInteracting = interaction && interaction.playerId === 2;
 
   return (
     <div className="h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
@@ -510,7 +481,7 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
              >
                📖 卡牌图鉴
              </button>
-             {/* PVE Reveal Cheat Button */}
+             {/* PVE AI Hand Reveal Cheat Button */}
              <button 
                 onClick={() => setRevealAIHand(!revealAIHand)} 
                 className={`text-[10px] font-bold px-3 py-2 rounded border backdrop-blur transition-all duration-300 flex items-center gap-1
@@ -520,6 +491,17 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
                     }`}
              >
                 {revealAIHand ? '👁️ AI手牌可见' : '🙈 透视AI'}
+             </button>
+             {/* PVE AI Score Debug Button */}
+             <button 
+                onClick={() => setShowAIScores(!showAIScores)} 
+                className={`text-[10px] font-bold px-3 py-2 rounded border backdrop-blur transition-all duration-300 flex items-center gap-1
+                    ${showAIScores 
+                        ? 'bg-blue-900/80 text-blue-200 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]' 
+                        : 'bg-stone-900/60 text-stone-500 border-stone-800 hover:text-stone-300'
+                    }`}
+             >
+                {showAIScores ? '🧠 AI思维可见' : '🧠 AI思维'}
              </button>
              <button 
                onClick={() => setShowDebug(!showDebug)} 
@@ -534,7 +516,19 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
           {showDebug && <DebugOverlay gameState={gameState} setGameState={setGameState} createEffectContext={createEffectContext} onClose={() => setShowDebug(false)} />}
           {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
           {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
-          {interaction && <InteractionOverlay request={interaction} />}
+          
+          {/* Conditional Interaction Overlay */}
+          {shouldShowInteraction && <InteractionOverlay request={interaction} />}
+
+          {/* AI Thinking Indicator for Interactions */}
+          {isAIInteracting && (
+             <div className="absolute top-1/3 left-1/2 -translate-x-1/2 z-[45] pointer-events-none">
+                <div className="bg-stone-900/80 text-amber-500 px-6 py-2 rounded-full border border-amber-900/30 shadow-lg animate-pulse flex items-center gap-2">
+                   <span className="animate-spin text-lg">⚙️</span>
+                   <span className="font-serif text-sm tracking-widest">AI 正在抉择...</span>
+                </div>
+             </div>
+          )}
 
           <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
           
@@ -559,7 +553,7 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
           )}
 
           <div className="flex-grow flex flex-col relative overflow-hidden z-10">
-            {/* Player 2 (AI) - Hide hand unless revealed */}
+            {/* Player 2 (AI) */}
             <PlayerArea 
               player={player2} isOpponent phase={phase} 
               selectedCardId={p2SelectedCardId} mustDiscard={false}
@@ -569,7 +563,8 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
               onViewDeck={() => openPileView('DECK', 2)}
               onViewVault={() => openPileView('VAULT', 2)}
               enableControls={false}
-              hideHand={!revealAIHand} // Controlled by Toggle
+              hideHand={!revealAIHand} 
+              debugInfo={aiDebugInfo} 
             />
             
             <FieldArea gameState={gameState} player1={player1} player2={player2} />

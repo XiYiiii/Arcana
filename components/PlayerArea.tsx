@@ -22,7 +22,9 @@ interface PlayerAreaProps {
   onViewDeck?: () => void;
   onViewVault?: () => void;
   enableControls?: boolean;
-  hideHand?: boolean; // New prop to force hide hand (show card backs)
+  hideHand?: boolean; 
+  // Debug Info Prop
+  debugInfo?: Record<string, { score: number, reasons: string[] }>;
 }
 
 export const PlayerArea: React.FC<PlayerAreaProps> = ({ 
@@ -41,7 +43,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     onViewDeck, 
     onViewVault,
     enableControls,
-    hideHand = false // Default to false (visible)
+    hideHand = false,
+    debugInfo
 }) => {
    // Default behavior: If it's an opponent (online/remote), disable controls. 
    // In local game, we will explicitly pass enableControls=true for both.
@@ -223,6 +226,9 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     // If hideHand is true, we force face down unless it's a treasure that was specifically revealed (usually treasures are public, but logic here assumes hand privacy overrides unless explicit)
                     // Actually, treasures in hand are private until played.
                     const shouldShowFace = !hideHand; 
+                    
+                    // Debug Info Data
+                    const debugData = debugInfo ? debugInfo[card.instanceId] : null;
 
                     const style: React.CSSProperties = {
                         transform: isHovered || isSelectedCard
@@ -243,6 +249,26 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             onMouseEnter={() => setHoveredIndex(idx)}
                             onMouseLeave={() => setHoveredIndex(null)}
                         >
+                            {/* DEBUG SCORE OVERLAY */}
+                            {debugData && (
+                                <div className={`absolute ${isOpponent ? '-bottom-16' : '-top-12'} left-1/2 -translate-x-1/2 bg-black/90 text-white text-[10px] p-2 rounded z-[60] w-32 pointer-events-auto group/debug border border-yellow-600/50 shadow-lg scale-90`}>
+                                    <div className="font-bold text-center text-yellow-400 text-sm flex flex-col">
+                                        <span>得分: {debugData.score.toFixed(0)}</span>
+                                    </div>
+                                    <div className="hidden group-hover/debug:block absolute bottom-full left-1/2 -translate-x-1/2 bg-stone-950 border border-stone-600 p-2 rounded w-48 mb-2 z-[70] shadow-xl">
+                                        <div className="text-[10px] font-bold text-stone-400 mb-1 border-b border-stone-800 pb-1">评分详情</div>
+                                        {debugData.reasons.map((r, i) => (
+                                            <div key={i} className="text-[9px] text-stone-300 flex justify-between">
+                                                <span>{r.split(':')[0]}</span>
+                                                <span className={r.includes('+') ? 'text-emerald-400' : 'text-red-400'}>{r.split(':')[1]}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {/* Arrow */}
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-black/90"></div>
+                                </div>
+                            )}
+
                             <CardComponent 
                                 card={card} 
                                 isFaceUp={shouldShowFace} 
