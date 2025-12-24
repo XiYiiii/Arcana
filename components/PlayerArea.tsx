@@ -47,30 +47,27 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
     debugInfo
 }) => {
    // Default behavior: If it's an opponent (online/remote), disable controls. 
-   // In local game, we will explicitly pass enableControls=true for both.
    const showActions = enableControls !== undefined ? enableControls : !isOpponent;
 
    const isDiscardPhase = phase === GamePhase.DISCARD;
-   const allowInteraction = phase === GamePhase.SET || instantWindow !== InstantWindow.NONE || (phase === GamePhase.DISCARD && mustDiscard);
+   // 修改：弃牌阶段只要手牌数 >= 2，就允许交互（弃牌）
+   const allowInteraction = phase === GamePhase.SET || instantWindow !== InstantWindow.NONE || (isDiscardPhase && player.hand.length >= 2);
+   
    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
    const [hoveredQuestId, setHoveredQuestId] = useState<string | null>(null);
 
-   // Button Validity Logic - Use showActions instead of !isOpponent
    const isSetButtonActive = showActions && phase === GamePhase.SET && selectedCardId && canSet;
    const isInstantButtonActive = showActions && selectedCardId && canInstant;
 
    return (
       <div className={`flex-1 flex flex-col w-full ${isOpponent ? 'pt-4' : 'pb-6'} relative transition-all duration-500 z-30`}>
          
-         {/* Player Info Panel & Action Buttons - Increased Z-Index to 60 */}
          <div className={`absolute ${isOpponent ? 'top-4' : 'bottom-8'} left-1/2 -translate-x-1/2 z-[60] flex items-center gap-4`}>
              
-             {/* Action Buttons - Visible if showActions is true */}
              {showActions && (
                 <div className="flex flex-row items-center mr-4 animate-in fade-in slide-in-from-right-4 gap-3">
-                    {/* Set Card Indicator/Button */}
                     <button 
-                        onClick={isSetButtonActive ? () => {} : undefined} // Button is mostly visual indicator for Set, actual trigger handles in parent or auto, but let's keep consistent style
+                        onClick={isSetButtonActive ? () => {} : undefined} 
                         disabled={!isSetButtonActive}
                         className={`
                             px-4 py-2 rounded-lg text-[10px] font-bold border transition-all duration-300 shadow-md select-none flex items-center justify-center whitespace-nowrap min-w-[80px]
@@ -83,7 +80,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                         {isSetButtonActive ? '▼ 确认盖牌' : '盖牌'}
                     </button>
 
-                    {/* Instant Use Button */}
                     <button 
                         onClick={() => selectedCardId && onInstant(selectedCardId)} 
                         disabled={!isInstantButtonActive}
@@ -100,9 +96,7 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                 </div>
              )}
 
-             {/* Status Bar */}
              <div className="flex items-center gap-4 bg-stone-950/90 px-6 py-2 rounded-full border border-stone-700 backdrop-blur-md shadow-2xl pointer-events-none">
-                 {/* Avatar / Name */}
                  <div className="flex items-center gap-2">
                      <div className={`w-8 h-8 rounded border ${isOpponent ? 'border-stone-600 bg-stone-800' : 'border-stone-500 bg-stone-800'} flex items-center justify-center shadow-lg`}>
                          <span className="text-sm grayscale opacity-70">{isOpponent ? '👤' : '🧙‍♂️'}</span>
@@ -114,10 +108,8 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                      </div>
                  </div>
                  
-                 {/* Divider */}
                  <div className="w-px h-6 bg-stone-700/50"></div>
 
-                 {/* Stats Row */}
                  <div className="flex gap-3">
                     <div className="flex items-center gap-1.5">
                         <span className="text-xs">❤️</span>
@@ -129,7 +121,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     </div>
                  </div>
 
-                 {/* Status Effects */}
                  <div className="flex gap-1">
                    {player.immunityNextTurn && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="下回免疫"></span>}
                    {player.immunityThisTurn && <span className="w-2 h-2 rounded-full bg-amber-600 border border-amber-400 shadow-glow" title="免疫中"></span>}
@@ -138,7 +129,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                    {mustDiscard && isDiscardPhase && <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" title="需弃牌"></span>}
                  </div>
 
-                 {/* Quests */}
                  {player.quests.length > 0 && (
                      <>
                          <div className="w-px h-6 bg-stone-700/50 mx-1"></div>
@@ -155,7 +145,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                                          <div className="h-full bg-gradient-to-r from-yellow-700 to-yellow-400 transition-all duration-500" style={{ width: `${Math.min(100, (q.progress / q.target) * 100)}%` }}></div>
                                      </div>
                                      
-                                     {/* Quest Tooltip */}
                                      {hoveredQuestId === q.id && (
                                          <div className={`absolute left-1/2 -translate-x-1/2 ${isOpponent ? 'top-full mt-3' : 'bottom-full mb-3'} w-48 bg-stone-950/95 p-3 rounded-lg border border-yellow-600/50 shadow-[0_0_20px_rgba(0,0,0,0.8)] z-[100] text-left pointer-events-none backdrop-blur-xl`}>
                                              <div className="text-[11px] font-bold text-yellow-500 mb-1 flex justify-between items-center">
@@ -167,7 +156,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                                                  <span>当前: {q.progress}</span>
                                                  <span>目标: {q.target}</span>
                                              </div>
-                                             {/* Arrow */}
                                              <div className={`absolute left-1/2 -translate-x-1/2 w-0 h-0 border-8 border-transparent ${isOpponent ? 'bottom-full border-b-stone-950/95 -mb-[1px]' : 'top-full border-t-stone-950/95 -mt-[1px]'}`}></div>
                                          </div>
                                      )}
@@ -179,29 +167,20 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
              </div>
          </div>
 
-         {/* Main Playing Area Row: Piles + Hand */}
          <div className={`flex-1 w-full max-w-[1600px] mx-auto px-4 sm:px-12 flex ${isOpponent ? 'items-start' : 'items-end'} justify-between relative`}>
-            
-            {/* Left Pile Column */}
             <div className={`flex flex-col ${isOpponent ? 'mt-8' : 'mb-24'} z-10`}>
                 {isOpponent ? (
-                    // Opponent Left: Deck (P2)
                     <div className="relative">
                         <DeckPile count={player.deck.length} isOpponent onClick={onViewDeck} />
                         <TreasureVault position="bottom" onClick={onViewVault} />
                     </div>
                 ) : (
-                    // Player Left: Discard
                     <DiscardPile cards={player.discardPile} onClick={onViewDiscard} />
                 )}
             </div>
 
-            {/* Center Hand Area */}
             <div className={`relative flex-1 flex justify-center ${isOpponent ? 'mt-[-40px]' : 'mb-16'}`}>
-                {/* Card Container - Fan Layout */}
-                <div className={`
-                    relative flex justify-center items-end h-[220px] w-full max-w-3xl
-                `}>
+                <div className={`relative flex justify-center items-end h-[220px] w-full max-w-3xl`}>
                 {player.hand.length === 0 && phase === GamePhase.SET && (
                     <div className="text-stone-600 text-xs font-serif italic flex items-center bg-stone-900/30 px-6 py-2 rounded-full border border-stone-800 self-center">
                         无手牌
@@ -214,20 +193,12 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                     const offset = idx - middle;
                     
                     const rotateDeg = offset * 5; 
-                    // Modified TranslateY for P1 (isOpponent=false) to move it up ~10-15px
-                    // Original: -5rem. New: -5.8rem.
                     const translateY = Math.abs(offset) * 6 + (isOpponent ? 80 : -40); 
                     
                     const isHovered = hoveredIndex === idx;
                     const isSelectedCard = selectedCardId === card.instanceId;
-                    
                     const tooltipSide = idx > middle ? 'left' : 'right';
-                    
-                    // If hideHand is true, we force face down unless it's a treasure that was specifically revealed (usually treasures are public, but logic here assumes hand privacy overrides unless explicit)
-                    // Actually, treasures in hand are private until played.
                     const shouldShowFace = !hideHand; 
-                    
-                    // Debug Info Data
                     const debugData = debugInfo ? debugInfo[card.instanceId] : null;
 
                     const style: React.CSSProperties = {
@@ -249,7 +220,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                             onMouseEnter={() => setHoveredIndex(idx)}
                             onMouseLeave={() => setHoveredIndex(null)}
                         >
-                            {/* DEBUG SCORE OVERLAY */}
                             {debugData && (
                                 <div className={`absolute ${isOpponent ? '-bottom-16' : '-top-12'} left-1/2 -translate-x-1/2 bg-black/90 text-white text-[10px] p-2 rounded z-[60] w-32 pointer-events-auto group/debug border border-yellow-600/50 shadow-lg scale-90`}>
                                     <div className="font-bold text-center text-yellow-400 text-sm flex flex-col">
@@ -264,7 +234,6 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                                             </div>
                                         ))}
                                     </div>
-                                    {/* Arrow */}
                                     <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-black/90"></div>
                                 </div>
                             )}
@@ -284,13 +253,10 @@ export const PlayerArea: React.FC<PlayerAreaProps> = ({
                 </div>
             </div>
 
-            {/* Right Pile Column */}
             <div className={`flex flex-col ${isOpponent ? 'mt-8' : 'mb-24'} z-10`}>
                 {isOpponent ? (
-                    // Opponent Right: Discard
                     <DiscardPile cards={player.discardPile} isOpponent onClick={onViewDiscard} />
                 ) : (
-                    // Player Right: Deck (P1)
                     <div className="relative">
                         <TreasureVault position="top" onClick={onViewVault} />
                         <DeckPile count={player.deck.length} onClick={onViewDeck} />

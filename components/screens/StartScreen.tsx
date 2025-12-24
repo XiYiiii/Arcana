@@ -5,10 +5,11 @@ interface StartScreenProps {
   onStartGame: () => void;
   onStartOnlineGame: () => void;
   onOpenDeckBuilder: () => void;
-  onStartPVE: () => void; // Added callback
+  onStartPVE: () => void; 
+  onStartAdventure: () => void; // New callback
 }
 
-export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onStartOnlineGame, onOpenDeckBuilder, onStartPVE }) => {
+export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onStartOnlineGame, onOpenDeckBuilder, onStartPVE, onStartAdventure }) => {
   return (
     <div className="fixed inset-0 bg-stone-950 flex flex-col items-center justify-center z-50 overflow-hidden">
       {/* Background Effects */}
@@ -30,38 +31,49 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onStartOn
 
         <div className="flex flex-col gap-4 w-full max-w-xs">
           
+          {/* Adventure Mode */}
+          <button 
+            onClick={onStartAdventure}
+            className="group relative px-8 py-4 bg-stone-900 border border-purple-700/50 rounded-lg overflow-hidden transition-all hover:scale-105 hover:border-purple-500 hover:shadow-[0_0_30px_rgba(168,85,247,0.3)]"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-900/0 via-purple-900/20 to-purple-900/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+            <div className="relative flex flex-col items-center z-10">
+                <span className="font-serif font-bold text-xl text-purple-100 tracking-widest group-hover:text-white">
+                  🧭 冒险模式
+                </span>
+                <span className="text-[10px] text-purple-400/60 uppercase tracking-widest mt-1">Adventure Saga</span>
+            </div>
+          </button>
+
           {/* Local Multiplayer */}
           <button 
             onClick={onStartGame}
-            className="group relative px-8 py-4 bg-stone-900 border border-amber-700/50 rounded-lg overflow-hidden transition-all hover:scale-105 hover:border-amber-500 hover:shadow-[0_0_30px_rgba(245,158,11,0.2)]"
+            className="group relative px-8 py-3 bg-stone-900 border border-amber-700/50 rounded-lg overflow-hidden transition-all hover:scale-105 hover:border-amber-500"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-amber-900/0 via-amber-900/20 to-amber-900/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
             <div className="relative flex flex-col items-center z-10">
-                <span className="font-serif font-bold text-xl text-amber-100 tracking-widest group-hover:text-white">
+                <span className="font-serif font-bold text-lg text-amber-100 tracking-widest group-hover:text-white">
                   本地多人
                 </span>
-                <span className="text-[10px] text-amber-500/60 uppercase tracking-widest mt-1">Local Multiplayer</span>
+                <span className="text-[10px] text-amber-500/60 uppercase tracking-widest mt-0.5">Local PVP</span>
             </div>
           </button>
 
           {/* Single Player (PVE) */}
           <button 
             onClick={onStartPVE}
-            className="relative px-8 py-3 bg-stone-900 border border-stone-600 rounded-lg flex flex-col items-center overflow-hidden transition-all hover:scale-105 hover:border-stone-400 hover:shadow-[0_0_20px_rgba(120,113,108,0.2)] group"
+            className="relative px-8 py-3 bg-stone-900 border border-stone-600 rounded-lg flex flex-col items-center overflow-hidden transition-all hover:scale-105 hover:border-stone-400 group"
           >
-             <div className="absolute inset-0 bg-gradient-to-r from-stone-700/0 via-stone-700/10 to-stone-700/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
              <div className="relative flex flex-col items-center z-10">
-                 <span className="font-serif font-bold text-lg text-stone-300 tracking-widest group-hover:text-stone-100 transition-colors">单人模式</span>
-                 <span className="text-[9px] text-stone-500 uppercase tracking-widest mt-0.5 group-hover:text-stone-400">PVE Challenge</span>
+                 <span className="font-serif font-bold text-lg text-stone-300 tracking-widest group-hover:text-stone-100 transition-colors">人机对战</span>
+                 <span className="text-[9px] text-stone-500 uppercase tracking-widest mt-0.5 group-hover:text-stone-400">PVE Practice</span>
              </div>
           </button>
 
-          {/* Online Multiplayer (Enabled) */}
+          {/* Online Multiplayer */}
           <button 
             onClick={onStartOnlineGame}
             className="group relative px-8 py-3 bg-stone-900/80 border border-stone-700 rounded-lg flex flex-col items-center overflow-hidden transition-all hover:border-indigo-500 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]"
           >
-             <div className="absolute inset-0 bg-gradient-to-r from-indigo-900/0 via-indigo-900/20 to-indigo-900/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
              <div className="relative flex flex-col items-center z-10">
                 <span className="font-serif font-bold text-lg text-stone-300 tracking-widest group-hover:text-indigo-200 transition-colors">联机模式</span>
                 <span className="text-[9px] text-stone-600 uppercase tracking-widest mt-0.5 group-hover:text-indigo-400">Online PvP</span>
@@ -80,7 +92,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({ onStartGame, onStartOn
       </div>
 
       <div className="absolute bottom-8 text-stone-600 text-xs font-mono">
-        PROJECT BLANK v0.3.3
+        PROJECT BLANK v0.4.0
       </div>
     </div>
   );

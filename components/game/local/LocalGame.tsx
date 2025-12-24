@@ -58,20 +58,15 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
        setGameState,
        log: addLog,
        isReversed: p?.isReversed,
-       gameMode: 'LOCAL' // Explicitly set mode
+       gameMode: 'LOCAL' 
      };
   };
 
   // --- Initialization ---
   useEffect(() => {
       const allowedDefs = CARD_DEFINITIONS.filter(c => enabledCardIds.includes(c.id) || c.isTreasure);
-      
-      // Ensure we have enough cards to play, otherwise fallback to full deck
       const finalDefs = allowedDefs.length < 10 ? CARD_DEFINITIONS : allowedDefs;
-      if (allowedDefs.length < 10) {
-          console.warn("Selected deck too small, reverting to full deck.");
-      }
-
+      
       const p1Deck = shuffleDeck(generateDeck(1, finalDefs));
       const p2Deck = shuffleDeck(generateDeck(2, finalDefs));
       
@@ -93,7 +88,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
         delayedEffects: [],
         maxHandSize: MAX_HAND_SIZE, skipDiscardThisTurn: false,
         quests: [],
-        swordsSunDamageMult: 1, // Reset multiplier
+        swordsSunDamageMult: 1,
       });
 
       setGameState({
@@ -113,7 +108,6 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
       });
   }, [enabledCardIds, initialHp, initialHandSize]);
 
-  // --- Visual Events Cleanup ---
   const handleVisualEventComplete = (id: string) => {
       setGameState(prev => {
           if (!prev) return null;
@@ -124,13 +118,10 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
       });
   };
 
-  // --- Rule: Empty Hand Check (Or All Locked) ---
   useEffect(() => {
     if (!gameState) return;
     const checkPlayer = (pid: number) => {
       const p = pid === 1 ? gameState.player1 : gameState.player2;
-      
-      // Condition: Hand is empty OR All cards in hand are locked
       const isHandEmpty = p.hand.length === 0;
       const isAllLocked = p.hand.length > 0 && p.hand.every(c => c.isLocked);
 
@@ -143,36 +134,28 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
          }
       }
     };
-
     checkPlayer(1);
     checkPlayer(2);
   }, [gameState?.player1.hand, gameState?.player2.hand]);
 
-  // --- Quest Check: Wands Star (Holding Sun & Moon) ---
   useEffect(() => {
-      if (!gameState) return;
-      
-      const checkWandsStarQuest = (pid: number) => {
-          const p = pid === 1 ? gameState.player1 : gameState.player2;
-          const hasQuest = p.quests.some(q => q.id === 'quest-wands-star');
-          if (hasQuest) {
-              const hasSun = p.hand.some(c => c.name.includes('太阳'));
-              const hasMoon = p.hand.some(c => c.name.includes('月亮'));
-              if (hasSun && hasMoon) {
-                  // Quest Complete condition met
-                  const ctx = createEffectContext(pid, p.hand[0] || {id:'dummy', name:'dummy'} as any);
-                  updateQuestProgress(ctx, pid, 'quest-wands-star', 1);
-              }
-          }
-      }
-      checkWandsStarQuest(1);
-      checkWandsStarQuest(2);
-  }, [gameState?.player1.hand, gameState?.player2.hand]); // Check whenever hands change
+    if (!gameState) return;
+    const checkWandsStarQuest = (pid: number) => {
+        const p = pid === 1 ? gameState.player1 : gameState.player2;
+        const hasQuest = p.quests.some(q => q.id === 'quest-wands-star');
+        if (hasQuest) {
+            const hasSun = p.hand.some(c => c.name.includes('太阳'));
+            const hasMoon = p.hand.some(c => c.name.includes('月亮'));
+            if (hasSun && hasMoon) {
+                const ctx = createEffectContext(pid, p.hand[0] || {id:'dummy', name:'dummy'} as any);
+                updateQuestProgress(ctx, pid, 'quest-wands-star', 1);
+            }
+        }
+    }
+    checkWandsStarQuest(1);
+    checkWandsStarQuest(2);
+  }, [gameState?.player1.hand, gameState?.player2.hand]);
 
-  // --- Rule: Lock Logic & Field Interactions ---
-  // ... Lock logic handled in Render ...
-
-  // --- Effect Queue Processor ---
   useEffect(() => {
     if (!gameState) return;
     if (gameState.activeEffect || gameState.interaction) return;
@@ -189,7 +172,6 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
     });
   }, [gameState?.pendingEffects, gameState?.activeEffect, gameState?.interaction]);
 
-  // --- Active Effect Logic ---
   const dismissActiveEffect = () => {
      if (gameState?.activeEffect) {
          const effect = gameState.activeEffect;
@@ -198,9 +180,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
          } else if (effect.type === 'ON_DISCARD' && effect.card.onDiscard) {
             effect.card.onDiscard(createEffectContext(effect.playerId, effect.card));
          }
-         
          setGameState(prev => prev ? ({ ...prev, activeEffect: null }) : null);
-         
          if (activeEffectResolverRef.current) {
              activeEffectResolverRef.current();
              activeEffectResolverRef.current = null;
@@ -208,7 +188,6 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
      }
   };
 
-  // --- Visual Helper ---
   const triggerVisualEffect = async (type: PendingEffect['type'], card: Card, pid: number, desc?: string) => {
       return new Promise<void>((resolve) => {
           activeEffectResolverRef.current = resolve;
@@ -219,47 +198,29 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
       });
   };
 
-  // --- Phase Handlers ---
   const onDrawPhase = () => executeDrawPhase({ gameState, setGameState, createEffectContext });
-  
-  const onSetPhase = () => {
-      // Execute logic (updates GameState)
-      executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId });
-      // CRITICAL: Manually clear UI state.
-      // Logic function no longer takes setter args to avoid coupling issues.
-      setP1SelectedCardId(null);
-      setP2SelectedCardId(null);
-  };
-  
-  const onFlip = () => {
-      executeFlipCards({ gameState, setGameState, addLog });
-      // Cleanup for safety
-      setP1SelectedCardId(null);
-      setP2SelectedCardId(null);
-  };
-  
+  const onSetPhase = () => { executeSetPhase({ setGameState, p1SelectedCardId, p2SelectedCardId }); setP1SelectedCardId(null); setP2SelectedCardId(null); };
+  const onFlip = () => { executeFlipCards({ gameState, setGameState, addLog }); setP1SelectedCardId(null); setP2SelectedCardId(null); };
   const onResolve = () => executeResolveEffects({ gameStateRef, setGameState, addLog, createEffectContext, triggerVisualEffect });
   const onDiscard = () => executeDiscardPhase({ gameState, setGameState, createEffectContext });
 
-  // --- Interactions ---
   const handleCardClick = (player: PlayerState, card: Card) => {
-    if (!gameState) return;
-    if (gameState?.isResolving || gameState?.phase === GamePhase.GAME_OVER) return;
+    if (!gameState || gameState.isResolving || gameState.phase === GamePhase.GAME_OVER) return;
 
-    if (gameState?.phase === GamePhase.SET) {
+    if (gameState.phase === GamePhase.SET || gameState.instantWindow !== InstantWindow.NONE) {
       if (player.id === 1) setP1SelectedCardId(card.instanceId === p1SelectedCardId ? null : card.instanceId);
       if (player.id === 2) setP2SelectedCardId(card.instanceId === p2SelectedCardId ? null : card.instanceId);
     } 
-    else if (gameState?.instantWindow !== InstantWindow.NONE) {
-       if (player.id === 1) setP1SelectedCardId(card.instanceId === p1SelectedCardId ? null : card.instanceId);
-       if (player.id === 2) setP2SelectedCardId(card.instanceId === p2SelectedCardId ? null : card.instanceId);
-    }
-    else if (gameState?.phase === GamePhase.DISCARD) {
+    else if (gameState.phase === GamePhase.DISCARD) {
       if (card.isTreasure) {
           addLog(`[规则] 宝藏牌无法被弃置！`);
           return;
       }
-      // Allow voluntary discard
+      // 修改：限制至少保留一张手牌
+      if (player.hand.length < 2) {
+          addLog(`[规则] 至少需要保留一张手牌。`);
+          return;
+      }
       const ctx = createEffectContext(player.id, card);
       discardCards(ctx, player.id, [card.instanceId]);
     }
@@ -269,16 +230,8 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
     if (!cardInstanceId || !gameState || gameState.isResolving) return;
     const card = player.hand.find(c => c.instanceId === cardInstanceId);
     if (!card || !card.onInstant) return;
-
-    if (card.isLocked) {
-        addLog("此牌被锁定，无法使用。");
-        return;
-    }
-
-    if (card.canInstant && !card.canInstant(gameState.instantWindow)) {
-       addLog("当前时机无法使用此卡的插入效果。");
-       return;
-    }
+    if (card.isLocked) { addLog("此牌被锁定，无法使用。"); return; }
+    if (card.canInstant && !card.canInstant(gameState.instantWindow)) { addLog("当前时机无法使用此卡的插入效果。"); return; }
 
     const oppId = getOpponentId(player.id);
     const opp = oppId === 1 ? gameState.player1 : gameState.player2;
@@ -318,7 +271,6 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
        });
        return;
     }
-
     proceedInstant(player, card);
   };
 
@@ -332,93 +284,57 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
           const key = player.id === 1 ? 'player1' : 'player2';
           const p = prev[key];
           const stillInHand = p.hand.find(c => c.instanceId === card.instanceId);
-          
-          // Fix: Check if ID matches. If ID changed, it means card transformed and should stay in hand.
-          // This prevents "Cups Wheel" or other transform instants from being auto-discarded.
           if (stillInHand && stillInHand.id === card.id) {
              return {
                 ...prev,
                 isResolving: false,
-                [key]: { 
-                    ...p, 
-                    hand: p.hand.filter(c => c.instanceId !== card.instanceId), 
-                    discardPile: [...p.discardPile, card] 
-                }
+                [key]: { ...p, hand: p.hand.filter(c => c.instanceId !== card.instanceId), discardPile: [...p.discardPile, card] }
              };
           }
-          // If not in hand or transformed (ID changed), do not discard.
           return { ...prev, isResolving: false };
       });
-
       if (player.id === 1) setP1SelectedCardId(null);
       if (player.id === 2) setP2SelectedCardId(null);
   };
   
-  // --- Viewer Handlers ---
   const openPileView = (type: 'DISCARD' | 'DECK' | 'VAULT', pid: number) => {
       if (!gameState) return;
       const player = pid === 1 ? gameState.player1 : gameState.player2;
-      
       let cards: Card[] = [];
       let title = "";
       let sorted = false;
-      
-      if (type === 'DISCARD') {
-          cards = player.discardPile;
-          title = `${player.name} 的弃牌堆`;
-      } else if (type === 'DECK') {
-          cards = player.deck;
-          title = `${player.name} 的抽牌堆 (查看)`;
-          sorted = true; // IMPORTANT: Prevent cheating by sorting
-      } else if (type === 'VAULT') {
-          // Show general treasures available (from definitions)
-          const treasures = CARD_DEFINITIONS.filter(c => c.isTreasure).map(t => ({...t, instanceId: `vault-${t.id}`, marks: [], description: t.description || ""}));
-          cards = treasures;
-          title = `${player.name} 的宝库`; // Personal Vault
-      }
-      
+      if (type === 'DISCARD') { cards = player.discardPile; title = `${player.name} 的弃牌堆`; }
+      else if (type === 'DECK') { cards = player.deck; title = `${player.name} 的抽牌堆 (查看)`; sorted = true; }
+      else if (type === 'VAULT') { cards = CARD_DEFINITIONS.filter(c => c.isTreasure).map(t => ({...t, instanceId: `vault-${t.id}`, marks: [], description: t.description || ""})); title = `${player.name} 的宝库`; }
       setViewingPile({ type, pid, cards, title, sorted });
   };
 
   if (!gameState) return <div className="bg-stone-900 h-screen text-stone-400 flex items-center justify-center font-serif">Initializing...</div>;
 
   const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState;
-  
-  // Swords Star Field Logic Check for UI enable
   const isSwordsStarActive = field?.active && field.card.name.includes('宝剑·星星');
 
-  // Conditional Lock Logic Helper
   const isCardConditionLocked = (player: PlayerState, c: Card): boolean => {
-      if (c.isLocked) return true; // Base lock
+      if (c.isLocked) return true; 
       if (c.isTreasure) return false;
-
-      // Swords Star
       if (isSwordsStarActive && c.name.includes('太阳')) return false;
-
       const lovers = player.hand.filter(x => x.marks.includes('mark-lovers') || x.marks.includes('mark-swords-lovers'));
       const justice = player.hand.find(x => x.marks.includes('mark-justice'));
       const wandsJustice = player.hand.find(x => x.marks.includes('mark-wands-justice'));
-      
       const swordsLoversCount = player.hand.filter(x => x.marks.includes('mark-swords-lovers')).length;
       const hasWandsLoversPair = player.hand.filter(x => x.marks.includes('mark-lovers')).length >= 2;
-      const hasJustice = !!justice;
-      const hasWandsJustice = !!wandsJustice;
-
       if (hasWandsLoversPair && c.marks.includes('mark-lovers')) return true;
       if (c.marks.includes('mark-swords-lovers') && swordsLoversCount >= 2) return true;
-      if (hasJustice && !c.marks.includes('mark-justice')) return true;
-      if (hasWandsJustice && !c.marks.includes('mark-wands-justice')) return true;
+      if (!!justice && !c.marks.includes('mark-justice')) return true;
+      if (!!wandsJustice && !c.marks.includes('mark-wands-justice')) return true;
       if (c.marks.includes('mark-sun')) return true;
-      
       return false;
   };
 
   const p1Sel = player1.hand.find(c => c.instanceId === p1SelectedCardId);
   const p2Sel = player2.hand.find(c => c.instanceId === p2SelectedCardId);
-  
   const canSetP1 = player1.hand.length > 0 ? (p1Sel && (p1Sel.canSet !== false || (isSwordsStarActive && p1Sel.name.includes('太阳'))) && !isCardConditionLocked(player1, p1Sel)) : true;
   const canSetP2 = player2.hand.length > 0 ? (p2Sel && (p2Sel.canSet !== false || (isSwordsStarActive && p2Sel.name.includes('太阳'))) && !isCardConditionLocked(player2, p2Sel)) : true;
-  
   const canInstantP1 = p1Sel && p1Sel.canInstant?.(instantWindow) && !p1Sel.isLocked;
   const canInstantP2 = p2Sel && p2Sel.canInstant?.(instantWindow) && !p2Sel.isLocked;
   
@@ -428,12 +344,9 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
   const p2MustDiscard = p2HandCount > player2.maxHandSize && !player2.skipDiscardThisTurn;
 
   const getActionButton = () => {
-    if (phase === GamePhase.GAME_OVER) {
-        return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
-    }
+    if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
     const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
-    
-    if (phase === GamePhase.DRAW) return <button onClick={onDrawPhase} className={`${commonClasses} bg-stone-700 hover:bg-stone-600 hover:shadow-stone-500/20 text-stone-200 border-stone-900`}>抽牌阶段</button>;
+    if (phase === GamePhase.DRAW) return <button onClick={onDrawPhase} className={`${commonClasses} bg-stone-700 hover:bg-stone-600 text-stone-200 border-stone-900`}>抽牌阶段</button>;
     if (phase === GamePhase.SET) {
        const disabled = !canSetP1 || !canSetP2;
        return <button onClick={onSetPhase} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800 border-stone-900 text-stone-600 cursor-not-allowed' : 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-950 shadow-emerald-900/30'}`}>确认盖牌</button>;
@@ -444,6 +357,7 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
        return <button className={`${commonClasses} bg-stone-800 text-stone-500 border-stone-950`} disabled>结算中...</button>;
     }
     if (phase === GamePhase.DISCARD) {
+       // 修改：只要手牌数 <= maxHandSize (3)，就可以结束阶段
        const disabled = p1MustDiscard || p2MustDiscard;
        return <button onClick={onDiscard} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800 text-red-400 border-stone-950' : 'bg-stone-700 hover:bg-stone-600 text-stone-200 border-stone-900'}`}>{disabled ? "请先弃牌" : "结束回合"}</button>;
     }
@@ -451,127 +365,38 @@ export const LocalGame: React.FC<LocalGameProps> = ({ enabledCardIds, initialHp,
   };
 
   return (
-    <div className="h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden selection:bg-amber-900/50 relative">
-      
-      {/* LEFT SIDEBAR - LOGS - PASS NULL FOR LOCAL MODE */}
+    <div className="h-screen bg-stone-900 flex flex-row font-sans text-stone-300 overflow-hidden relative">
       <GameLogSidebar logs={gameState.logs} currentPlayerId={null} />
-
-      {/* RIGHT - MAIN GAME AREA */}
       <div className="flex-1 flex flex-col relative h-full overflow-hidden">
-          {/* Unified Background */}
           <div className="absolute inset-0 bg-stone-900 z-0"></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(28,25,23,0)_0%,_rgba(0,0,0,0.5)_100%)] z-0 pointer-events-none"></div>
           <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] z-0"></div>
-          
-          {/* Visual Effects Layer */}
           <VisualEffectsLayer events={gameState.visualEvents} onEventComplete={handleVisualEventComplete} />
-
-          {/* Top Bar */}
           <div className="absolute top-4 right-4 z-50 flex gap-3">
-             <button 
-               onClick={onExit} 
-               className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur"
-             >
-               退出游戏
-             </button>
-             <button 
-               onClick={() => setShowGallery(!showGallery)} 
-               className="text-[10px] font-serif font-bold bg-stone-900/60 text-amber-600 hover:text-amber-500 px-4 py-2 rounded border border-amber-900/30 backdrop-blur transition-all hover:shadow-[0_0_15px_rgba(180,83,9,0.2)]"
-             >
-               📖 卡牌图鉴
-             </button>
-             <button 
-               onClick={() => setShowDebug(!showDebug)} 
-               className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur"
-             >
-               调试
-             </button>
+             <button onClick={onExit} className="text-[10px] bg-stone-900/60 text-red-400 hover:text-red-300 px-3 py-2 rounded border border-red-900/30 backdrop-blur">退出游戏</button>
+             <button onClick={() => setShowGallery(!showGallery)} className="text-[10px] font-serif font-bold bg-stone-900/60 text-amber-600 hover:text-amber-500 px-4 py-2 rounded border border-amber-900/30 backdrop-blur transition-all hover:shadow-[0_0_15px_rgba(180,83,9,0.2)]">📖 卡牌图鉴</button>
+             <button onClick={() => setShowDebug(!showDebug)} className="text-[10px] bg-stone-900/60 text-stone-600 hover:text-stone-400 px-3 py-2 rounded border border-stone-800 backdrop-blur">调试</button>
           </div>
-
           {showGallery && <GalleryOverlay onClose={() => setShowGallery(false)} />}
-          
-          {viewingPile && (
-              <CardPileOverlay 
-                  title={viewingPile.title} 
-                  cards={viewingPile.cards} 
-                  onClose={() => setViewingPile(null)} 
-                  sorted={viewingPile.sorted}
-              />
-          )}
-
-          {showDebug && (
-              <DebugOverlay 
-                 gameState={gameState} 
-                 setGameState={setGameState} 
-                 createEffectContext={createEffectContext} 
-                 onClose={() => setShowDebug(false)} 
-              />
-          )}
-
+          {viewingPile && <CardPileOverlay title={viewingPile.title} cards={viewingPile.cards} onClose={() => setViewingPile(null)} sorted={viewingPile.sorted} />}
+          {showDebug && <DebugOverlay gameState={gameState} setGameState={setGameState} createEffectContext={createEffectContext} onClose={() => setShowDebug(false)} />}
           {phase === GamePhase.GAME_OVER && <GameOverOverlay result={gameState.logs[0]} onRestart={onExit} />}
           {activeEffect && <EffectOverlay effect={activeEffect} onDismiss={dismissActiveEffect} />}
           {interaction && <InteractionOverlay request={interaction} />}
-
           <PhaseBar currentPhase={phase} turn={gameState.turnCount} />
-          
-          {/* Status Ticker */}
           <div className="bg-stone-900/80 backdrop-blur text-center text-[10px] py-1.5 border-b border-stone-800/50 shadow-lg relative z-30">
              <span className="text-amber-700 font-bold tracking-wider uppercase mr-2">状态:</span>
-             <span className="text-stone-400 font-serif">
-                {instantWindow === InstantWindow.NONE ? '等待中...' : 
-                 instantWindow === InstantWindow.BEFORE_SET ? '置牌前时机' :
-                 instantWindow === InstantWindow.BEFORE_REVEAL ? '亮牌前时机' :
-                 instantWindow === InstantWindow.AFTER_REVEAL ? '亮牌后时机' : '结算中...'}
-             </span>
-             {gameState.field && (
-                 <span className="ml-4 text-emerald-500 font-serif font-bold">
-                     🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})
-                 </span>
-             )}
+             <span className="text-stone-400 font-serif">{instantWindow === InstantWindow.NONE ? '等待中...' : instantWindow}</span>
+             {gameState.field && <span className="ml-4 text-emerald-500 font-serif font-bold">🏟️ 场地: {gameState.field.card.name} (P{gameState.field.ownerId})</span>}
              <span className="ml-4 text-xs font-bold text-stone-600">[本地双人模式]</span>
           </div>
-
-          {isResolving && !activeEffect && !interaction && (
-             <div className="absolute inset-0 z-[45] flex items-center justify-center pointer-events-none">
-                <div className="bg-black/70 text-amber-500 px-8 py-4 rounded-xl text-lg font-serif font-bold shadow-2xl backdrop-blur-md border border-amber-900/30 animate-pulse">
-                   处理中...
-                </div>
-             </div>
-          )}
-
           <div className="flex-grow flex flex-col relative overflow-hidden z-10">
-            <PlayerArea 
-              player={player2} isOpponent phase={phase} 
-              selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard}
-              canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow}
-              onSelect={(c) => handleCardClick(player2, c)} onInstant={(id) => handleInstantUse(player2, id)}
-              onViewDiscard={() => openPileView('DISCARD', 2)}
-              onViewDeck={() => openPileView('DECK', 2)}
-              onViewVault={() => openPileView('VAULT', 2)}
-              enableControls={true} // Explicitly enable controls for P2 in Local Mode
-              hideHand={false} // Always show hands in Local Mode
-            />
-            
+            <PlayerArea player={player2} isOpponent phase={phase} selectedCardId={p2SelectedCardId} mustDiscard={p2MustDiscard} canSet={canSetP2} canInstant={!!canInstantP2} isResolving={isResolving} instantWindow={instantWindow} onSelect={(c) => handleCardClick(player2, c)} onInstant={(id) => handleInstantUse(player2, id)} onViewDiscard={() => openPileView('DISCARD', 2)} onViewDeck={() => openPileView('DECK', 2)} onViewVault={() => openPileView('VAULT', 2)} enableControls={true} hideHand={false} />
             <FieldArea gameState={gameState} player1={player1} player2={player2} />
-
-            <PlayerArea 
-              player={player1} phase={phase} 
-              selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard}
-              canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow}
-              onSelect={(c) => handleCardClick(player1, c)} onInstant={(id) => handleInstantUse(player1, id)}
-              onViewDiscard={() => openPileView('DISCARD', 1)}
-              onViewDeck={() => openPileView('DECK', 1)}
-              onViewVault={() => openPileView('VAULT', 1)}
-              enableControls={true} // Explicitly enable controls for P1 in Local Mode
-              hideHand={false} // Always show hands in Local Mode
-            />
+            <PlayerArea player={player1} phase={phase} selectedCardId={p1SelectedCardId} mustDiscard={p1MustDiscard} canSet={canSetP1} canInstant={!!canInstantP1} isResolving={isResolving} instantWindow={instantWindow} onSelect={(c) => handleCardClick(player1, c)} onInstant={(id) => handleInstantUse(player1, id)} onViewDiscard={() => openPileView('DISCARD', 1)} onViewDeck={() => openPileView('DECK', 1)} onViewVault={() => openPileView('VAULT', 1)} enableControls={true} hideHand={false} />
           </div>
-
-          {/* Bottom Action Panel - Modified to remove logs */}
           <div className="bg-stone-900/80 backdrop-blur-md border-t border-stone-800/50 p-4 flex justify-center items-center h-24 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-30 relative shrink-0">
-             <div className="w-full max-w-sm flex items-center justify-center">
-                {getActionButton()}
-             </div>
+             <div className="w-full max-w-sm flex items-center justify-center">{getActionButton()}</div>
           </div>
       </div>
     </div>

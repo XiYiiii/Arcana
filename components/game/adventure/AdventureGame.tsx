@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, GamePhase, InstantWindow, GameState, PlayerState, EffectContext, PendingEffect, Keyword, CardDefinition } from '../../../types';
 import { generateDeck, shuffleDeck } from '../../../services/gameUtils';
-import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress, isTreasureInVault } from '../../../services/actions'; 
+import { drawCards, discardCards, getOpponentId, destroyCard, updateQuestProgress } from '../../../services/actions'; 
 import { MAX_HAND_SIZE, INITIAL_ATK } from '../../../constants';
 import { CARD_DEFINITIONS } from '../../../data/cards';
 
@@ -19,32 +19,31 @@ import { executeSetPhase } from '../../../logic/phases/set';
 import { executeFlipCards, executeResolveEffects } from '../../../logic/phases/reveal';
 import { executeDiscardPhase } from '../../../logic/phases/discard';
 
-// Import AI Logic
+// Import local AI Logic
 import { calculateCardUtilityDetailed } from './aiLogic';
 import { handleAIInteraction } from './aiDecisions';
 
-interface PVEGameProps {
+interface AdventureGameProps {
     enabledCardIds: string[];
     initialHp: number;
     initialHandSize: number;
     onExit: () => void;
 }
 
-export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, initialHandSize, onExit }) => {
+export const AdventureGame: React.FC<AdventureGameProps> = ({ enabledCardIds, initialHp, initialHandSize, onExit }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [p1SelectedCardId, setP1SelectedCardId] = useState<string | null>(null);
   const [p2SelectedCardId, setP2SelectedCardId] = useState<string | null>(null);
   
-  // Debug & UI State
   const [showDebug, setShowDebug] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [revealAIHand, setRevealAIHand] = useState(false); 
   const [showAIScores, setShowAIScores] = useState(false); 
   
-  // Pile Viewer State
   const [viewingPile, setViewingPile] = useState<{ type: 'DISCARD' | 'DECK' | 'VAULT', pid: number, cards: Card[], title: string, sorted?: boolean } | null>(null);
   const activeEffectResolverRef = useRef<(() => void) | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
+  
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
   const addLog = (message: string) => {
@@ -56,6 +55,7 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
      return { gameState: gameStateRef.current!, sourcePlayerId: playerId, card, setGameState, log: addLog, isReversed: p?.isReversed, gameMode: 'LOCAL' };
   };
 
+  // FIX: Moved triggerVisualEffect and dismissActiveEffect up to avoid initialization errors
   const triggerVisualEffect = async (type: PendingEffect['type'], card: Card, pid: number, desc?: string) => {
       return new Promise<void>((resolve) => {
           activeEffectResolverRef.current = resolve;
@@ -100,7 +100,7 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
       const p1Hand = p1Deck.splice(0, initialHandSize);
       const p2Hand = p2Deck.splice(0, initialHandSize);
       const initialPlayerState = (id: number, deck: Card[], hand: Card[]): PlayerState => ({
-        id, name: id === 1 ? "玩家" : "AI 对手", hp: initialHp, atk: INITIAL_ATK,
+        id, name: id === 1 ? "玩家" : "冒险宿敌", hp: initialHp, atk: INITIAL_ATK,
         deck, hand, discardPile: [], fieldSlot: null, isFieldCardRevealed: false,
         immunityThisTurn: false, immunityNextTurn: false, effectDoubleNext: false,
         isReversed: false, isInvalidated: false, hpRecoverNextTurn: 0, invalidateNextPlayedCard: false, invalidateNextTurn: false,
@@ -109,7 +109,7 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
         delayedEffects: [], maxHandSize: MAX_HAND_SIZE, skipDiscardThisTurn: false, quests: [], swordsSunDamageMult: 1, 
       });
       setGameState({
-        phase: GamePhase.DRAW, instantWindow: InstantWindow.NONE, turnCount: 1, logs: ["PVE 模式开始。"],
+        phase: GamePhase.DRAW, instantWindow: InstantWindow.NONE, turnCount: 1, logs: ["冒险模式：序章开始。"],
         player1: initialPlayerState(1, p1Deck, p1Hand), player2: initialPlayerState(2, p2Deck, p2Hand),
         playerReadyState: { 1: false, 2: false }, field: null, isResolving: false, pendingEffects: [], activeEffect: null, interaction: null, visualEvents: []
       });
@@ -167,25 +167,18 @@ export const PVEGame: React.FC<PVEGameProps> = ({ enabledCardIds, initialHp, ini
     }
   };
 
-  const handleInstantUse = (player: PlayerState, id: string) => { 
-      // Simplified for PVE
-  };
-
-  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction, field } = gameState || {} as GameState;
+  const { phase, instantWindow, player1, player2, isResolving, activeEffect, interaction } = gameState || {} as GameState;
   const p1HandCount = player1?.hand.filter(c => !c.isTreasure).length || 0;
   const p1MustDiscard = p1HandCount > (player1?.maxHandSize || 3) && !player1?.skipDiscardThisTurn;
 
   const getActionButton = () => {
-    if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">游戏结束</div>;
+    if (phase === GamePhase.GAME_OVER) return <div className="text-2xl font-black text-red-600 animate-pulse font-serif">冒险结束</div>;
     const commonClasses = "w-full py-3 rounded-lg font-serif font-black text-lg tracking-widest shadow-md transition-all transform duration-200 border-b-4 active:border-b-0 active:translate-y-1";
     if (phase === GamePhase.DRAW) return <button onClick={onDrawPhase} className={`${commonClasses} bg-stone-700 hover:bg-stone-600 text-stone-200 border-stone-900`}>抽牌阶段</button>;
-    if (phase === GamePhase.SET) {
-       const disabled = !p1SelectedCardId || !p2SelectedCardId; 
-       return <button onClick={onSetPhase} disabled={disabled} className={`${commonClasses} ${disabled ? 'bg-stone-800' : 'bg-emerald-800'}`}>{!p2SelectedCardId ? "AI 思考中..." : "确认盖牌"}</button>;
-    }
+    if (phase === GamePhase.SET) return <button onClick={onSetPhase} disabled={!p1SelectedCardId || !p2SelectedCardId} className={`${commonClasses} ${(!p1SelectedCardId || !p2SelectedCardId) ? 'bg-stone-800' : 'bg-emerald-800'}`}>确认盖牌</button>;
     if (phase === GamePhase.REVEAL) return <button onClick={instantWindow === InstantWindow.BEFORE_REVEAL ? onFlip : onResolve} className={`${commonClasses} bg-amber-800`}>继续</button>;
     if (phase === GamePhase.DISCARD) {
-       // 修改：只需手牌 <= 3 即可点击结束
+       // 修改：手牌 <= 3 即可点结束
        return <button onClick={onDiscard} disabled={p1MustDiscard} className={`${commonClasses} ${p1MustDiscard ? 'bg-stone-800 text-red-400' : 'bg-stone-700'}`}>{p1MustDiscard ? "请先弃牌" : "结束回合"}</button>;
     }
     return null;

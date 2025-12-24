@@ -8,8 +8,10 @@ import { GameSetupScreen } from './components/screens/GameSetupScreen';
 import { LocalGame } from './components/game/local/LocalGame';
 import { OnlineGame } from './components/game/online/OnlineGame';
 import { PVEGame } from './components/game/pve/PVEGame';
+import { AdventureGame } from './components/game/adventure/AdventureGame';
+import { AdventureMapScreen } from './components/game/adventure/AdventureMapScreen';
 
-type AppMode = 'MENU' | 'BUILDER' | 'LOCAL_GAME' | 'ONLINE_GAME' | 'PVE_GAME';
+type AppMode = 'MENU' | 'BUILDER' | 'LOCAL_GAME' | 'ONLINE_GAME' | 'PVE_GAME' | 'ADVENTURE_MAP' | 'ADVENTURE_GAME';
 
 export default function App() {
   // App Mode State
@@ -22,11 +24,21 @@ export default function App() {
   const [initialHp, setInitialHp] = useState(INITIAL_HP);
   const [initialHandSize, setInitialHandSize] = useState(3);
 
+  // Adventure State
+  const [activeLevelId, setActiveLevelId] = useState<string | null>(null);
+  const [adventureBossHp, setAdventureBossHp] = useState(40);
+
   const handleSetupConfirm = (ids: string[], settings: { hp: number, handSize: number }) => {
       setEnabledCardIds(ids);
       setInitialHp(settings.hp);
       setInitialHandSize(settings.handSize);
       setAppMode('MENU');
+  };
+
+  const handleStartAdventureLevel = (levelId: string, bossHp: number) => {
+      setActiveLevelId(levelId);
+      setAdventureBossHp(bossHp);
+      setAppMode('ADVENTURE_GAME');
   };
 
   // --- RENDER SWITCH ---
@@ -36,6 +48,7 @@ export default function App() {
           onStartGame={() => setAppMode('LOCAL_GAME')} 
           onStartOnlineGame={() => setAppMode('ONLINE_GAME')}
           onStartPVE={() => setAppMode('PVE_GAME')}
+          onStartAdventure={() => setAppMode('ADVENTURE_MAP')}
           onOpenDeckBuilder={() => setAppMode('BUILDER')} 
         />
       );
@@ -81,6 +94,26 @@ export default function App() {
           initialHp={initialHp}
           initialHandSize={initialHandSize}
           onExit={() => setAppMode('MENU')}
+        />
+      );
+  }
+
+  if (appMode === 'ADVENTURE_MAP') {
+      return (
+        <AdventureMapScreen 
+            onStartLevel={handleStartAdventureLevel}
+            onBack={() => setAppMode('MENU')}
+        />
+      );
+  }
+
+  if (appMode === 'ADVENTURE_GAME') {
+      return (
+        <AdventureGame 
+          enabledCardIds={enabledCardIds}
+          initialHp={initialHp} // Player HP
+          initialHandSize={initialHandSize}
+          onExit={() => setAppMode('ADVENTURE_MAP')} // Back to map
         />
       );
   }
